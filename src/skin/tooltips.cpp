@@ -389,7 +389,7 @@ void Tooltips::addStandardTooltips() {
             << QString("%1: %2").arg(rightClick, tr("Jumps to the beginning of the track and stops."));
 
     // Currently used for decks
-    QString cueSet = tr("Places a cue-point at the current position on the waveform.");
+    QString cueSet = tr("Places a cue point at the current position on the waveform.");
     add("play_cue_set")
             << tr("Play/Pause")
             << QString("%1: %2").arg(leftClick, tr("Plays or pauses the track."))
@@ -399,11 +399,12 @@ void Tooltips::addStandardTooltips() {
     QString whileStopped = tr("(while stopped)");
     add("cue_default_cue_gotoandstop")
             << tr("Cue")
-            << QString("%1 %2: %3").arg(leftClick, whilePlaying, tr("Stops track at cue point."))
-            << QString("%1 %2: %3").arg(leftClick, whileStopped, tr("Set cue point (Pioneer/Mixxx mode) OR preview from it (Denon mode)."))
+            << QString("%1 %2: %3").arg(leftClick, whilePlaying, tr("Stops track at cue point, OR go to cue point and play after release (CUP mode)."))
+            << QString("%1 %2: %3").arg(leftClick, whileStopped, tr("Set cue point (Pioneer/Mixxx/Numark mode), set cue point and play after release (CUP mode) "
+                                                                    "OR preview from it (Denon mode)."))
             << tr("Hint: Change the default cue mode in Preferences -> Interface.")
             << quantizeSnap
-            << QString("%1: %2").arg(rightClick, tr("Seeks the track to the cue-point and stops."));
+            << QString("%1: %2").arg(rightClick, tr("Seeks the track to the cue point and stops."));
 
     add("pfl")
             << tr("Headphone")
@@ -507,6 +508,11 @@ void Tooltips::addStandardTooltips() {
             << tr("Record Mix")
             << tr("Toggle mix recording.");
 
+    // Status displays and toggle buttons
+    add("recording_duration")
+            << tr("Recording Duration")
+            << tr("Displays the duration of the running recording.");
+
     // For legacy reasons also add tooltips for "shoutcast_enabled".
     for (const char* key : {"shoutcast_enabled", "broadcast_enabled"}) {
         add(key)
@@ -597,8 +603,8 @@ void Tooltips::addStandardTooltips() {
 
     add("track_time")
             << tr("Track Time")
-            << tr("Displays the elapsed or remaining time of the track loaded.")
-            << tr("Click to toggle between time elapsed/remaining time.");
+            << tr("Displays the elapsed and/or remaining time of the track loaded.")
+            << tr("Click to toggle between time elapsed/remaining time/both.");
 
     add("track_duration")
             << tr("Track Duration")
@@ -725,6 +731,10 @@ void Tooltips::addStandardTooltips() {
     add("EffectSlot_parameter_link_type")
             << tr("Super Knob Mode")
             << tr("Set how linked effect parameters change when turning the Super Knob.");
+
+    add("EffectSlot_parameter_inversion")
+            << tr("Super Knob Inversion")
+            << tr("Inverts how linked effect parameters change when turning the Super Knob.");
 
     add("EffectSlot_button_parameter")
             << tr("Equalizer Parameter Kill")

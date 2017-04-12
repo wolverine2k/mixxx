@@ -27,6 +27,7 @@
 #include "track/track.h"
 #include "util/cmdlineargs.h"
 #include "util/timer.h"
+#include "soundio/sounddeviceerror.h"
 
 class ControlPushButton;
 class ControllerManager;
@@ -64,6 +65,8 @@ class MixxxMainWindow : public QMainWindow {
     // creates the menu_bar and inserts the file Menu
     void createMenuBar();
     void connectMenuBar();
+    void setInhibitScreensaver(mixxx::ScreenSaverPreference inhibit);
+    mixxx::ScreenSaverPreference getInhibitScreensaver();
 
     void setToolTipsCfg(mixxx::TooltipsPreference tt);
     inline mixxx::TooltipsPreference getToolTipsCfg() { return m_toolTipsCfg; }
@@ -87,6 +90,7 @@ class MixxxMainWindow : public QMainWindow {
     void slotDeveloperToolsClosed();
 
     void slotUpdateWindowTitle(TrackPointer pTrack);
+    void slotChangedPlayingDeck(int deck);
 
     // Warn the user when inputs are not configured.
     void slotNoMicrophoneInputConfigured();
@@ -114,8 +118,12 @@ class MixxxMainWindow : public QMainWindow {
     void initializeKeyboard();
     void checkDirectRendering();
     bool confirmExit();
-    int noSoundDlg(void);
-    int noOutputDlg(bool* continueClicked);
+    QDialog::DialogCode soundDeviceErrorDlg(
+            const QString &title, const QString &text, bool* retryClicked);
+    QDialog::DialogCode soundDeviceBusyDlg(bool* retryClicked);
+    QDialog::DialogCode soundDeviceErrorMsgDlg(
+            SoundDeviceError err, bool* retryClicked);
+    QDialog::DialogCode noOutputDlg(bool* continueClicked);
 
     // Pointer to the root GUI widget
     QWidget* m_pWidgetParent;
@@ -170,6 +178,7 @@ class MixxxMainWindow : public QMainWindow {
     const CmdlineArgs& m_cmdLineArgs;
 
     ControlPushButton* m_pTouchShift;
+    mixxx::ScreenSaverPreference m_inhibitScreensaver;
 
     static const int kMicrophoneCount;
     static const int kAuxiliaryCount;

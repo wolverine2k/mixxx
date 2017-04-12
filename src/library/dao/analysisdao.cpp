@@ -316,11 +316,7 @@ bool AnalysisDao::saveDataToFile(const QString& fileName, const QByteArray& data
     return true;
 }
 
-void AnalysisDao::saveTrackAnalyses(Track* pTrack) {
-    if (!pTrack) {
-        return;
-    }
-
+void AnalysisDao::saveTrackAnalyses(const Track& track) {
     // The only analyses we have at the moment are waveform analyses so we have
     // nothing to do if it is disabled.
     WaveformSettings waveformSettings(m_pConfig);
@@ -328,16 +324,16 @@ void AnalysisDao::saveTrackAnalyses(Track* pTrack) {
         return;
     }
 
-    ConstWaveformPointer pWaveform = pTrack->getWaveform();
-    ConstWaveformPointer pWaveSummary = pTrack->getWaveformSummary();
+    ConstWaveformPointer pWaveform = track.getWaveform();
+    ConstWaveformPointer pWaveSummary = track.getWaveformSummary();
 
     // Don't try to save invalid or non-dirty waveforms.
-    if (!pWaveform || pWaveform->getDataSize() == 0 || !pWaveform->isDirty() ||
-        !pWaveSummary || pWaveSummary->getDataSize() == 0 || !pWaveSummary->isDirty()) {
+    if (!pWaveform || pWaveform->saveState() != Waveform::SaveState::SavePending ||
+        !pWaveSummary || pWaveSummary->saveState() != Waveform::SaveState::SavePending) {
         return;
     }
 
-    TrackId trackId(pTrack->getId());
+    TrackId trackId(track.getId());
 
     AnalysisDao::AnalysisInfo analysis;
     analysis.trackId = trackId;
@@ -350,7 +346,7 @@ void AnalysisDao::saveTrackAnalyses(Track* pTrack) {
     analysis.data = pWaveform->toByteArray();
     bool success = saveAnalysis(&analysis);
     if (success) {
-        pWaveform->setDirty(false);
+        pWaveform->setSaveState(Waveform::SaveState::Saved);
     }
 
     qDebug() << (success ? "Saved" : "Failed to save")
@@ -366,7 +362,7 @@ void AnalysisDao::saveTrackAnalyses(Track* pTrack) {
 
     success = saveAnalysis(&analysis);
     if (success) {
-        pWaveSummary->setDirty(false);
+        pWaveSummary->setSaveState(Waveform::SaveState::Saved);
     }
     qDebug() << (success ? "Saved" : "Failed to save")
              << "waveform summary analysis for trackId" << trackId
@@ -411,5 +407,11 @@ bool AnalysisDao::deleteAnalysesByType(AnalysisType type) {
         QString dataPath = analysisPath.absoluteFilePath(query.value(idColumn).toString());
         deleteFile(dataPath);
     }
+    query.prepare(QString("DELETE FROM %1 WHERE type=:type").arg(s_analysisTableName));
+    query.bindValue(":type", type);
+    if (!query.exec()) {
+        LOG_FAILED_QUERY(query) << "couldn't delete analysis";
+    }
+
     return true;
 }
