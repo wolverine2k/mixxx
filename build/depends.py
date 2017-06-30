@@ -12,6 +12,8 @@ class PortAudio(Dependence):
         if not conf.CheckLib('portaudio'):
             raise Exception(
                 'Did not find libportaudio.a, portaudio.lib, or the PortAudio-v19 development header files.')
+        elif build.platform_is_linux:
+            build.env.ParseConfig('pkg-config portaudio-2.0 --silence-errors --cflags --libs')
 
         # Turn on PortAudio support in Mixxx
         build.env.Append(CPPDEFINES='__PORTAUDIO__')
@@ -93,12 +95,12 @@ class CoreServices(Dependence):
         build.env.Append(LINKFLAGS='-framework CoreServices')
 
 class IOKit(Dependence):
-    """IOKit is used to get battery measurements on OS X and iOS."""
+    """Used for battery measurements and controlling the screensaver on OS X and iOS."""
     def configure(self, build, conf):
         if not build.platform_is_osx:
             return
         build.env.Append(
-            CPPPATH='/Library/Frameworks/IOKit.framework/Headers/')
+            CPPPATH='/System/Library/Frameworks/IOKit.framework/Headers/')
         build.env.Append(LINKFLAGS='-framework IOKit')
 
 class UPower(Dependence):
@@ -282,7 +284,7 @@ class Qt(Dependence):
                 raise Exception('Qt >= 5.0 not found')
             elif not qt5 and not conf.CheckForPKG('QtCore', '4.6'):
                 raise Exception('QT >= 4.6 not found')
-            
+
             qt_modules.extend(['QtDBus'])
             # This automatically converts QtXXX to Qt5XXX where appropriate.
             if qt5:
@@ -777,6 +779,7 @@ class MixxxCore(Feature):
                    "analyzer/analyzerebur128.cpp",
 
                    "controllers/controller.cpp",
+                   "controllers/controllerdebug.cpp",
                    "controllers/controllerengine.cpp",
                    "controllers/controllerenumerator.cpp",
                    "controllers/controllerlearningeventfilter.cpp",
@@ -824,6 +827,7 @@ class MixxxCore(Feature):
                    "widget/wlabel.cpp",
                    "widget/wtracktext.cpp",
                    "widget/wnumber.cpp",
+                   "widget/wbeatspinbox.cpp",
                    "widget/wnumberdb.cpp",
                    "widget/wnumberpos.cpp",
                    "widget/wnumberrate.cpp",
@@ -843,6 +847,7 @@ class MixxxCore(Feature):
                    "widget/wskincolor.cpp",
                    "widget/wsearchlineedit.cpp",
                    "widget/wpixmapstore.cpp",
+                   "widget/paintable.cpp",
                    "widget/wimagestore.cpp",
                    "widget/hexspinbox.cpp",
                    "widget/wtrackproperty.cpp",
@@ -880,6 +885,10 @@ class MixxxCore(Feature):
                    "widget/wlibrarytableview.cpp",
                    "widget/wanalysislibrarytableview.cpp",
                    "widget/wlibrarytextbrowser.cpp",
+
+                   "database/mixxxdb.cpp",
+                   "database/schemamanager.cpp",
+
                    "library/trackcollection.cpp",
                    "library/basesqltablemodel.cpp",
                    "library/basetrackcache.cpp",
@@ -964,7 +973,6 @@ class MixxxCore(Feature):
                    "library/dao/autodjcratesdao.cpp",
 
                    "library/librarycontrol.cpp",
-                   "library/schemamanager.cpp",
                    "library/songdownloader.cpp",
                    "library/starrating.cpp",
                    "library/stardelegate.cpp",
@@ -1112,6 +1120,9 @@ class MixxxCore(Feature):
                    "util/movinginterquartilemean.cpp",
                    "util/console.cpp",
                    "util/db/dbconnection.cpp",
+                   "util/db/dbconnectionpool.cpp",
+                   "util/db/dbconnectionpooler.cpp",
+                   "util/db/dbconnectionpooled.cpp",
                    "util/db/dbid.cpp",
                    "util/db/fwdsqlquery.cpp",
                    "util/db/fwdsqlqueryselectresult.cpp",
@@ -1124,6 +1135,7 @@ class MixxxCore(Feature):
                    "util/singularsamplebuffer.cpp",
                    "util/circularsamplebuffer.cpp",
                    "util/rotary.cpp",
+                   "util/logger.cpp",
                    "util/logging.cpp",
                    "util/cmdlineargs.cpp",
                    "util/audiosignal.cpp",
@@ -1407,7 +1419,7 @@ class MixxxCore(Feature):
     def depends(self, build):
         return [SoundTouch, ReplayGain, Ebur128Mit, PortAudio, PortMIDI, Qt, TestHeaders,
                 FidLib, SndFile, FLAC, OggVorbis, OpenGL, TagLib, ProtoBuf,
-                Chromaprint, RubberBand, SecurityFramework, CoreServices,
+                Chromaprint, RubberBand, SecurityFramework, CoreServices, IOKit,
                 QtScriptByteArray, Reverb, FpClassify, PortAudioRingBuffer]
 
     def post_dependency_check_configure(self, build, conf):
