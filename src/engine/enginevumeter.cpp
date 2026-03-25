@@ -1,80 +1,67 @@
-/***************************************************************************
-                          enginevumeter.cpp  -  description
-                             -------------------
-    copyright            : (C) 2002 by Tue and Ken Haste Andersen
-    email                :
-***************************************************************************/
-
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
 #include "engine/enginevumeter.h"
 
-#include "control/controlproxy.h"
-#include "control/controlpotmeter.h"
-#include "util/math.h"
+#include "audio/types.h"
+#include "moc_enginevumeter.cpp"
 #include "util/sample.h"
 
-EngineVuMeter::EngineVuMeter(QString group) {
-    // The VUmeter widget is controlled via a controlpotmeter, which means
-    // that it should react on the setValue(int) signal.
-    m_ctrlVuMeter = new ControlPotmeter(ConfigKey(group, "VuMeter"), 0., 1.);
-    // left channel VU meter
-    m_ctrlVuMeterL = new ControlPotmeter(ConfigKey(group, "VuMeterL"), 0., 1.);
-    // right channel VU meter
-    m_ctrlVuMeterR = new ControlPotmeter(ConfigKey(group, "VuMeterR"), 0., 1.);
+namespace {
 
-    // Used controlpotmeter as the example used it :/ perhaps someone with more
-    // knowledge could use something more suitable...
-    m_ctrlPeakIndicator = new ControlPotmeter(ConfigKey(group, "PeakIndicator"),
-                                              0., 1.);
-    m_ctrlPeakIndicatorL = new ControlPotmeter(ConfigKey(group, "PeakIndicatorL"),
-                                              0., 1.);
-    m_ctrlPeakIndicatorR = new ControlPotmeter(ConfigKey(group, "PeakIndicatorR"),
-                                              0., 1.);
+// Rate at which the vumeter is updated (using a sample rate of 44100 Hz):
+constexpr unsigned int kVuUpdateRate = 30; // in Hz (1/s), fits to display frame rate
+constexpr int kPeakDuration = 500;         // in ms
 
-    m_pSampleRate = new ControlProxy("[Master]", "samplerate", this);
+// Smoothing Factors
+// Must be from 0-1 the lower the factor, the more smoothing that is applied
+constexpr CSAMPLE kAttackSmoothing = 1.0f; // .85
+constexpr CSAMPLE kDecaySmoothing = 0.1f;  //.16//.4
 
+} // namespace
+
+EngineVuMeter::EngineVuMeter(const QString& group,
+        const QString& legacyGroup,
+        bool createLegacyAliases)
+        : m_vuMeter(ConfigKey(group, QStringLiteral("vu_meter"))),
+          m_vuMeterLeft(ConfigKey(group, QStringLiteral("vu_meter_left"))),
+          m_vuMeterRight(ConfigKey(group, QStringLiteral("vu_meter_right"))),
+          m_peakIndicator(ConfigKey(group, QStringLiteral("peak_indicator"))),
+          m_peakIndicatorLeft(
+                  ConfigKey(group, QStringLiteral("peak_indicator_left"))),
+          m_peakIndicatorRight(
+                  ConfigKey(group, QStringLiteral("peak_indicator_right"))),
+          m_sampleRate(QStringLiteral("[App]"), QStringLiteral("samplerate")) {
+    if (createLegacyAliases) {
+        const QString& aliasGroup = legacyGroup.isEmpty() ? group : legacyGroup;
+        m_vuMeter.addAlias(ConfigKey(aliasGroup, QStringLiteral("VuMeter")));
+        m_vuMeterLeft.addAlias(ConfigKey(aliasGroup, QStringLiteral("VuMeterL")));
+        m_vuMeterRight.addAlias(ConfigKey(aliasGroup, QStringLiteral("VuMeterR")));
+        m_peakIndicator.addAlias(ConfigKey(aliasGroup, QStringLiteral("PeakIndicator")));
+        m_peakIndicatorLeft.addAlias(ConfigKey(aliasGroup, QStringLiteral("PeakIndicatorL")));
+        m_peakIndicatorRight.addAlias(ConfigKey(aliasGroup, QStringLiteral("PeakIndicatorR")));
+    }
     // Initialize the calculation:
     reset();
 }
 
-EngineVuMeter::~EngineVuMeter()
-{
-    delete m_ctrlVuMeter;
-    delete m_ctrlVuMeterL;
-    delete m_ctrlVuMeterR;
-    delete m_ctrlPeakIndicator;
-    delete m_ctrlPeakIndicatorL;
-    delete m_ctrlPeakIndicatorR;
-}
-
-void EngineVuMeter::process(CSAMPLE* pIn, const int iBufferSize) {
+void EngineVuMeter::process(CSAMPLE* pIn, const std::size_t bufferSize) {
     CSAMPLE fVolSumL, fVolSumR;
 
-    int sampleRate = (int)m_pSampleRate->get();
+    const auto sampleRate = mixxx::audio::SampleRate::fromDouble(m_sampleRate.get());
 
     SampleUtil::CLIP_STATUS clipped = SampleUtil::sumAbsPerChannel(&fVolSumL,
-            &fVolSumR, pIn, iBufferSize);
+            &fVolSumR,
+            pIn,
+            bufferSize);
     m_fRMSvolumeSumL += fVolSumL;
     m_fRMSvolumeSumR += fVolSumR;
 
-    m_iSamplesCalculated += iBufferSize / 2;
+    m_samplesCalculated += static_cast<unsigned int>(bufferSize / 2);
 
     // Are we ready to update the VU meter?:
-    if (m_iSamplesCalculated > (sampleRate / VU_UPDATE_RATE)) {
+    if (m_samplesCalculated > (sampleRate / kVuUpdateRate)) {
         doSmooth(m_fRMSvolumeL,
-                log10(SHRT_MAX * m_fRMSvolumeSumL
-                                / (m_iSamplesCalculated * 1000) + 1));
+                std::log10(SHRT_MAX * m_fRMSvolumeSumL / (m_samplesCalculated * 1000) + 1));
         doSmooth(m_fRMSvolumeR,
-                log10(SHRT_MAX * m_fRMSvolumeSumR
-                                / (m_iSamplesCalculated * 1000) + 1));
+                std::log10(SHRT_MAX * m_fRMSvolumeSumR / (m_samplesCalculated * 1000) + 1));
 
         const double epsilon = .0001;
 
@@ -82,68 +69,71 @@ void EngineVuMeter::process(CSAMPLE* pIn, const int iBufferSize) {
         // ControlObject will not prevent us from causing tons of extra
         // work. Because of this, we use an epsilon here to be gentle on the GUI
         // and MIDI controllers.
-        if (fabs(m_fRMSvolumeL - m_ctrlVuMeterL->get()) > epsilon)
-            m_ctrlVuMeterL->set(m_fRMSvolumeL);
-        if (fabs(m_fRMSvolumeR - m_ctrlVuMeterR->get()) > epsilon)
-            m_ctrlVuMeterR->set(m_fRMSvolumeR);
+        if (fabs(m_fRMSvolumeL - m_vuMeterLeft.get()) > epsilon) {
+            m_vuMeterLeft.set(m_fRMSvolumeL);
+        }
+        if (fabs(m_fRMSvolumeR - m_vuMeterRight.get()) > epsilon) {
+            m_vuMeterRight.set(m_fRMSvolumeR);
+        }
 
         double fRMSvolume = (m_fRMSvolumeL + m_fRMSvolumeR) / 2.0;
-        if (fabs(fRMSvolume - m_ctrlVuMeter->get()) > epsilon)
-            m_ctrlVuMeter->set(fRMSvolume);
+        if (fabs(fRMSvolume - m_vuMeter.get()) > epsilon) {
+            m_vuMeter.set(fRMSvolume);
+        }
 
         // Reset calculation:
-        m_iSamplesCalculated = 0;
+        m_samplesCalculated = 0;
         m_fRMSvolumeSumL = 0;
         m_fRMSvolumeSumR = 0;
     }
 
     if (clipped & SampleUtil::CLIPPING_LEFT) {
-        m_ctrlPeakIndicatorL->set(1.);
-        m_peakDurationL = PEAK_DURATION * sampleRate / iBufferSize / 2000;
+        m_peakIndicatorLeft.set(1.0);
+        m_peakDurationL = static_cast<int>(kPeakDuration * sampleRate / bufferSize / 2000);
     } else if (m_peakDurationL <= 0) {
-        m_ctrlPeakIndicatorL->set(0.);
+        m_peakIndicatorLeft.set(0.0);
     } else {
         --m_peakDurationL;
     }
 
     if (clipped & SampleUtil::CLIPPING_RIGHT) {
-        m_ctrlPeakIndicatorR->set(1.);
-        m_peakDurationR = PEAK_DURATION * sampleRate / iBufferSize / 2000;
+        m_peakIndicatorRight.set(1.0);
+        m_peakDurationR = static_cast<int>(kPeakDuration * sampleRate / bufferSize / 2000);
     } else if (m_peakDurationR <= 0) {
-        m_ctrlPeakIndicatorR->set(0.);
+        m_peakIndicatorRight.set(0.0);
     } else {
         --m_peakDurationR;
     }
 
-    m_ctrlPeakIndicator->set(m_ctrlPeakIndicatorR->get() || m_ctrlPeakIndicatorL->get());
+    m_peakIndicator.set(
+            (m_peakIndicatorRight.toBool() || m_peakIndicatorLeft.toBool())
+                    ? 1.0
+                    : 0.0);
 }
 
-void EngineVuMeter::collectFeatures(GroupFeatureState* pGroupFeatures) const {
-    pGroupFeatures->rms_volume_sum = (m_fRMSvolumeL + m_fRMSvolumeR) / 2.0;
-    pGroupFeatures->has_rms_volume_sum = true;
-}
-
-void EngineVuMeter::doSmooth(CSAMPLE &currentVolume, CSAMPLE newVolume)
-{
-    if (currentVolume > newVolume)
-        currentVolume -= DECAY_SMOOTHING * (currentVolume - newVolume);
-    else
-        currentVolume += ATTACK_SMOOTHING * (newVolume - currentVolume);
-    if (currentVolume < 0)
-        currentVolume=0;
-    if (currentVolume > 1.0)
-        currentVolume=1.0;
+void EngineVuMeter::doSmooth(CSAMPLE& currentVolume, CSAMPLE newVolume) {
+    if (currentVolume > newVolume) {
+        currentVolume -= kDecaySmoothing * (currentVolume - newVolume);
+    } else {
+        currentVolume += kAttackSmoothing * (newVolume - currentVolume);
+    }
+    if (currentVolume < 0) {
+        currentVolume = 0;
+    }
+    if (currentVolume > 1.0) {
+        currentVolume = 1.0;
+    }
 }
 
 void EngineVuMeter::reset() {
-    m_ctrlVuMeter->set(0);
-    m_ctrlVuMeterL->set(0);
-    m_ctrlVuMeterR->set(0);
-    m_ctrlPeakIndicator->set(0);
-    m_ctrlPeakIndicatorL->set(0);
-    m_ctrlPeakIndicatorR->set(0);
+    m_vuMeter.set(0);
+    m_vuMeterLeft.set(0);
+    m_vuMeterRight.set(0);
+    m_peakIndicator.set(0);
+    m_peakIndicatorLeft.set(0);
+    m_peakIndicatorRight.set(0);
 
-    m_iSamplesCalculated = 0;
+    m_samplesCalculated = 0;
     m_fRMSvolumeL = 0;
     m_fRMSvolumeSumL = 0;
     m_fRMSvolumeR = 0;

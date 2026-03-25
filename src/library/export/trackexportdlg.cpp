@@ -1,9 +1,9 @@
 #include "library/export/trackexportdlg.h"
 
-#include <QFileInfo>
-#include <QDesktopServices>
+#include <QCheckBox>
 #include <QMessageBox>
 
+#include "moc_trackexportdlg.cpp"
 #include "util/assert.h"
 
 TrackExportDlg::TrackExportDlg(QWidget *parent,
@@ -14,20 +14,28 @@ TrackExportDlg::TrackExportDlg(QWidget *parent,
           m_pConfig(pConfig),
           m_worker(worker) {
     setupUi(this);
-    connect(cancelButton, SIGNAL(clicked()), this, SLOT(cancelButtonClicked()));
+    connect(cancelButton,
+            &QPushButton::clicked,
+            this,
+            &TrackExportDlg::cancelButtonClicked);
     exportProgress->setMinimum(0);
     exportProgress->setMaximum(1);
     exportProgress->setValue(0);
     statusLabel->setText("");
     setModal(true);
 
-    connect(m_worker, SIGNAL(progress(QString, int, int)), this,
-            SLOT(slotProgress(QString, int, int)));
     connect(m_worker,
-            SIGNAL(askOverwriteMode(QString, std::promise<TrackExportWorker::OverwriteAnswer>*)),
+            &TrackExportWorker::progress,
             this,
-            SLOT(slotAskOverwriteMode(QString, std::promise<TrackExportWorker::OverwriteAnswer>*)));
-    connect(m_worker, SIGNAL(canceled()), this, SLOT(cancelButtonClicked()));
+            &TrackExportDlg::slotProgress);
+    connect(m_worker,
+            &TrackExportWorker::askOverwriteMode,
+            this,
+            &TrackExportDlg::slotAskOverwriteMode);
+    connect(m_worker,
+            &TrackExportWorker::canceled,
+            this,
+            &TrackExportDlg::cancelButtonClicked);
 }
 
 void TrackExportDlg::showEvent(QShowEvent* event) {
@@ -42,7 +50,7 @@ void TrackExportDlg::showEvent(QShowEvent* event) {
     m_worker->start();
 }
 
-void TrackExportDlg::slotProgress(QString filename, int progress, int count) {
+void TrackExportDlg::slotProgress(const QString& filename, int progress, int count) {
     if (progress == count) {
         statusLabel->setText(tr("Export finished"));
         finish();
@@ -55,35 +63,37 @@ void TrackExportDlg::slotProgress(QString filename, int progress, int count) {
 }
 
 void TrackExportDlg::slotAskOverwriteMode(
-        QString filename,
+        const QString& filename,
         std::promise<TrackExportWorker::OverwriteAnswer>* promise) {
     QMessageBox question_box(
             QMessageBox::Warning,
-            tr("Overwrite Existing File?"),
-            tr("\"%1\" already exists, overwrite?").arg(filename),
-            QMessageBox::Cancel | QMessageBox::No | QMessageBox::NoToAll
-            | QMessageBox::Yes | QMessageBox::YesToAll);
-    question_box.setDefaultButton(QMessageBox::No);
-    question_box.setButtonText(QMessageBox::Yes, tr("&Overwrite"));
-    question_box.setButtonText(QMessageBox::YesToAll, tr("Over&write All"));
-    question_box.setButtonText(QMessageBox::No, tr("&Skip"));
-    question_box.setButtonText(QMessageBox::NoToAll, tr("Skip &All"));
+            tr("Replace Existing File?"),
+            tr("\"%1\" already exists, replace?").arg(filename),
+            QMessageBox::Cancel,
+            this);
 
-    switch (question_box.exec()) {
-    case QMessageBox::No:
-        promise->set_value(TrackExportWorker::OverwriteAnswer::SKIP);
-        return;
-    case QMessageBox::NoToAll:
-        promise->set_value(TrackExportWorker::OverwriteAnswer::SKIP_ALL);
-        return;
-    case QMessageBox::Yes:
-        promise->set_value(TrackExportWorker::OverwriteAnswer::OVERWRITE);
-        return;
-    case QMessageBox::YesToAll:
-        promise->set_value(TrackExportWorker::OverwriteAnswer::OVERWRITE_ALL);
-        return;
-    case QMessageBox::Cancel:
-    default:
+    QPushButton* pSkip = question_box.addButton(
+            tr("&Skip"), QMessageBox::NoRole);
+    QPushButton* pOverwrite = question_box.addButton(
+            tr("&Replace"), QMessageBox::YesRole);
+    question_box.setDefaultButton(pSkip);
+
+    QCheckBox* pApplyToAll = new QCheckBox(tr("Apply to all files"));
+    pApplyToAll->setChecked(false);
+    question_box.setCheckBox(pApplyToAll);
+
+    question_box.exec();
+    auto* pBtn = question_box.clickedButton();
+    if (pBtn == pSkip) {
+        promise->set_value(pApplyToAll->isChecked()
+                        ? TrackExportWorker::OverwriteAnswer::SKIP_ALL
+                        : TrackExportWorker::OverwriteAnswer::SKIP);
+    } else if (pBtn == pOverwrite) {
+        promise->set_value(pApplyToAll->isChecked()
+                        ? TrackExportWorker::OverwriteAnswer::OVERWRITE_ALL
+                        : TrackExportWorker::OverwriteAnswer::OVERWRITE);
+    } else {
+        // Cancel
         promise->set_value(TrackExportWorker::OverwriteAnswer::CANCEL);
     }
 }
@@ -95,11 +105,13 @@ void TrackExportDlg::cancelButtonClicked() {
 void TrackExportDlg::finish() {
     m_worker->stop();
     m_worker->wait();
-    if (m_worker->errorMessage().length()) {
+    if (!m_worker->errorMessage().isEmpty()) {
         QMessageBox::warning(
-                NULL,
-                tr("Export Error"), m_worker->errorMessage(),
-                QMessageBox::Ok, QMessageBox::Ok);
+                nullptr,
+                tr("Export Error"),
+                m_worker->errorMessage(),
+                QMessageBox::Ok,
+                QMessageBox::Ok);
     }
     hide();
     accept();

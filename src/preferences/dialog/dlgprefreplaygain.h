@@ -1,12 +1,13 @@
-#ifndef DLGPREFREPLAYGAIN_H
-#define DLGPREFREPLAYGAIN_H
+#pragma once
 
-#include <QWidget>
+#include <QButtonGroup>
 
+#include "control/pollingcontrolproxy.h"
+#include "preferences/dialog/dlgpreferencepage.h"
 #include "preferences/dialog/ui_dlgprefreplaygaindlg.h"
 #include "preferences/replaygainsettings.h"
-#include "control/controlproxy.h"
-#include "preferences/dlgpreferencepage.h"
+
+class QWidget;
 
 class DlgPrefReplayGain: public DlgPreferencePage,
                          public Ui::DlgPrefReplayGainDlg {
@@ -19,13 +20,21 @@ class DlgPrefReplayGain: public DlgPreferencePage,
     // Update initial gain increment
     void slotUpdateReplayGainBoost();
     void slotUpdateDefaultBoost();
-    void slotSetRGEnabled();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+    void slotSetRGEnabled(Qt::CheckState);
+#else
+    void slotSetRGEnabled(int);
+#endif
     void slotSetRGAnalyzerChanged();
-    void slotSetReanalyze();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+    void slotSetReanalyze(Qt::CheckState);
+#else
+    void slotSetReanalyze(int);
+#endif
 
-    void slotApply();
-    void slotUpdate();
-    void slotResetToDefaults();
+    void slotApply() override;
+    void slotUpdate() override;
+    void slotResetToDefaults() override;
 
   signals:
     void apply(const QString &);
@@ -38,11 +47,7 @@ class DlgPrefReplayGain: public DlgPreferencePage,
     int getReplayGainVersion() const;
 
     ReplayGainSettings m_rgSettings;
-    ControlProxy m_replayGainBoost;
-    ControlProxy m_defaultBoost;
-    ControlProxy m_enabled;
-
-    QButtonGroup m_analysisButtonGroup;
+    PollingControlProxy m_replayGainBoost;
+    PollingControlProxy m_defaultBoost;
+    PollingControlProxy m_enabled;
 };
-
-#endif /* DLGPREFREPLAYGAIN_H */

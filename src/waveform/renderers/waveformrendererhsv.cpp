@@ -1,17 +1,16 @@
 #include "waveformrendererhsv.h"
 
-#include "waveformwidgetrenderer.h"
+#include "util/colorcomponents.h"
+#include "util/math.h"
+#include "util/painterscope.h"
 #include "waveform/waveform.h"
 #include "waveform/waveformwidgetfactory.h"
-
-#include "widget/wskincolor.h"
-#include "track/track.h"
-#include "widget/wwidget.h"
-#include "util/math.h"
+#include "waveformwidgetrenderer.h"
 
 WaveformRendererHSV::WaveformRendererHSV(
-        WaveformWidgetRenderer* waveformWidgetRenderer)
-    : WaveformRendererSignalBase(waveformWidgetRenderer) {
+        WaveformWidgetRenderer* waveformWidgetRenderer,
+        ::WaveformRendererSignalBase::Options options)
+        : WaveformRendererSignalBase(waveformWidgetRenderer, options) {
 }
 
 WaveformRendererHSV::~WaveformRendererHSV() {
@@ -21,73 +20,92 @@ void WaveformRendererHSV::onSetup(const QDomNode& node) {
     Q_UNUSED(node);
 }
 
-void WaveformRendererHSV::draw(QPainter* painter,
-                                          QPaintEvent* /*event*/) {
-    const TrackPointer trackInfo = m_waveformRenderer->getTrackInfo();
-    if (!trackInfo) {
+void WaveformRendererHSV::draw(
+        QPainter* painter,
+        QPaintEvent* /*event*/) {
+    ConstWaveformPointer pWaveform = m_waveformRenderer->getWaveform();
+    if (pWaveform.isNull()) {
         return;
     }
 
-    ConstWaveformPointer waveform = trackInfo->getWaveform();
-    if (waveform.isNull()) {
+    const double audioVisualRatio = pWaveform->getAudioVisualRatio();
+    if (audioVisualRatio <= 0) {
         return;
     }
 
-    const int dataSize = waveform->getDataSize();
+    const float devicePixelRatio = m_waveformRenderer->getDevicePixelRatio();
+
+    const int dataSize = pWaveform->getDataSize();
     if (dataSize <= 1) {
         return;
     }
 
-    const WaveformData* data = waveform->data();
-    if (data == NULL) {
+    const WaveformData* data = pWaveform->data();
+    if (data == nullptr) {
         return;
     }
 
-    painter->save();
+    const double trackSamples = m_waveformRenderer->getTrackSamples();
+    if (trackSamples <= 0) {
+        return;
+    }
+
+    PainterScope PainterScope(painter);
+
     painter->setRenderHints(QPainter::Antialiasing, false);
-    painter->setRenderHints(QPainter::HighQualityAntialiasing, false);
     painter->setRenderHints(QPainter::SmoothPixmapTransform, false);
     painter->setWorldMatrixEnabled(false);
     painter->resetTransform();
 
     // Rotate if drawing vertical waveforms
+    // and revert devicePixelRatio scaling in x direction.
     if (m_waveformRenderer->getOrientation() == Qt::Vertical) {
-        painter->setTransform(QTransform(0, 1, 1, 0, 0, 0));
+        painter->setTransform(QTransform(0, 1 / devicePixelRatio, 1, 0, 0, 0));
+    } else {
+        painter->setTransform(QTransform(1 / devicePixelRatio, 0, 0, 1, 0, 0));
     }
 
-    const double firstVisualIndex = m_waveformRenderer->getFirstDisplayedPosition() * dataSize;
-    const double lastVisualIndex = m_waveformRenderer->getLastDisplayedPosition() * dataSize;
+    const double firstVisualIndex =
+            m_waveformRenderer->getFirstDisplayedPosition() * trackSamples /
+            audioVisualRatio;
+    const double lastVisualIndex =
+            m_waveformRenderer->getLastDisplayedPosition() * trackSamples /
+            audioVisualRatio;
 
     const double offset = firstVisualIndex;
+    const float length = m_waveformRenderer->getLength() * devicePixelRatio;
 
     // Represents the # of waveform data points per horizontal pixel.
-    const double gain = (lastVisualIndex - firstVisualIndex) /
-            (double)m_waveformRenderer->getLength();
+    const double gain = (lastVisualIndex - firstVisualIndex) / length;
+    const auto* pColors = m_waveformRenderer->getWaveformSignalColors();
 
-    float allGain(1.0);
-    getGains(&allGain, NULL, NULL, NULL);
-
-    // Save HSV of waveform color. NOTE(rryan): On ARM, qreal is float so it's
-    // important we use qreal here and not double or float or else we will get
-    // build failures on ARM.
-    qreal h, s, v;
+    float allGain = 1.0;
+    float lowGain = 1.0;
+    float midGain = 1.0;
+    float highGain = 1.0;
+    getGains(&allGain, &lowGain, &midGain, &highGain);
 
     // Get base color of waveform in the HSV format (s and v isn't use)
-    m_pColors->getLowColor().getHsvF(&h, &s, &v);
+    float h, s, v;
+    getHsvF(pColors->getLowColor(), &h, &s, &v);
 
     QColor color;
     float lo, hi, total;
 
-    const int breadth = m_waveformRenderer->getBreadth();
-    const float halfBreadth = (float)breadth / 2.0;
+    QPen pen;
+    pen.setCapStyle(Qt::FlatCap);
+    pen.setWidthF(math_max(1.0, 1.0 / m_waveformRenderer->getVisualSamplePerPixel()));
 
-    const float heightFactor = allGain * halfBreadth / 255.0;
+    const int breadth = m_waveformRenderer->getBreadth();
+    const float halfBreadth = static_cast<float>(breadth) / 2.0f;
+
+    const float heightFactor = allGain * halfBreadth / 255.0f;
 
     //draw reference line
-    painter->setPen(m_pColors->getAxesColor());
-    painter->drawLine(0, halfBreadth, m_waveformRenderer->getLength(), halfBreadth);
+    painter->setPen(pColors->getAxesColor());
+    painter->drawLine(QLineF(0, halfBreadth, length, halfBreadth));
 
-    for (int x = 0; x < m_waveformRenderer->getLength(); ++x) {
+    for (int x = 0; x < static_cast<int>(length); ++x) {
         // Width of the x position in visual indices.
         const double xSampleWidth = gain * x;
 
@@ -118,64 +136,98 @@ void WaveformRendererHSV::draw(QPainter* painter,
         int visualIndexStart = visualFrameStart * 2;
         int visualIndexStop = visualFrameStop * 2;
 
-        int maxLow[2] = {0, 0};
-        int maxHigh[2] = {0, 0};
-        int maxMid[2] = {0, 0};
-        int maxAll[2] = {0, 0};
+        float maxLow[2] = {0.0f, 0.0f};
+        float maxHigh[2] = {0.0f, 0.0f};
+        float maxMid[2] = {0.0f, 0.0f};
+        float maxAll[2] = {0.0f, 0.0f};
 
         for (int i = visualIndexStart;
-             i >= 0 && i + 1 < dataSize && i + 1 <= visualIndexStop; i += 2) {
-            const WaveformData& waveformData = *(data + i);
-            const WaveformData& waveformDataNext = *(data + i + 1);
-            maxLow[0] = math_max(maxLow[0], (int)waveformData.filtered.low);
-            maxLow[1] = math_max(maxLow[1], (int)waveformDataNext.filtered.low);
-            maxMid[0] = math_max(maxMid[0], (int)waveformData.filtered.mid);
-            maxMid[1] = math_max(maxMid[1], (int)waveformDataNext.filtered.mid);
-            maxHigh[0] = math_max(maxHigh[0], (int)waveformData.filtered.high);
-            maxHigh[1] = math_max(maxHigh[1], (int)waveformDataNext.filtered.high);
-            maxAll[0] = math_max(maxAll[0], (int)waveformData.filtered.all);
-            maxAll[1] = math_max(maxAll[1], (int)waveformDataNext.filtered.all);
+                i >= 0 && i + 1 < dataSize && i + 1 <= visualIndexStop;
+                i += 2) {
+            const WaveformData& waveformDataLeft = *(data + i);
+            const WaveformData& waveformDataRight = *(data + i + 1);
+            maxLow[0] = math_max(maxLow[0],
+                    static_cast<float>(waveformDataLeft.filtered.low));
+            maxLow[1] = math_max(maxLow[1],
+                    static_cast<float>(waveformDataRight.filtered.low));
+            maxMid[0] = math_max(maxMid[0],
+                    static_cast<float>(waveformDataLeft.filtered.mid));
+            maxMid[1] = math_max(maxMid[1],
+                    static_cast<float>(waveformDataRight.filtered.mid));
+            maxHigh[0] = math_max(maxHigh[0],
+                    static_cast<float>(waveformDataLeft.filtered.high));
+            maxHigh[1] = math_max(maxHigh[1],
+                    static_cast<float>(waveformDataRight.filtered.high));
+            maxAll[0] = math_max(maxAll[0], static_cast<float>(waveformDataLeft.filtered.all));
+            maxAll[1] = math_max(maxAll[1], static_cast<float>(waveformDataRight.filtered.all));
         }
 
-        if (maxAll[0] && maxAll[1]) {
+        float allUnscaledLeft = maxLow[0] + maxMid[0] + maxHigh[0];
+        float allUnscaledRight = maxLow[1] + maxMid[1] + maxHigh[1];
+        maxLow[0] *= lowGain;
+        maxLow[1] *= lowGain;
+        maxMid[0] *= midGain;
+        maxMid[1] *= midGain;
+        maxHigh[0] *= highGain;
+        maxHigh[1] *= highGain;
+
+        float eqGain[2] = {1.0f, 1.0f};
+        if (allUnscaledLeft > 0.0f) {
+            eqGain[0] = (maxLow[0] + maxMid[0] + maxHigh[0]) / allUnscaledLeft;
+        }
+        if (allUnscaledRight > 0.0f) {
+            eqGain[1] = (maxLow[1] + maxMid[1] + maxHigh[1]) / allUnscaledRight;
+        }
+
+        if (maxAll[0] > 0.0f && maxAll[1] > 0.0f) {
             // Calculate sum, to normalize
             // Also multiply on 1.2 to prevent very dark or light color
-            total = (maxLow[0] + maxLow[1] + maxMid[0] + maxMid[1] + maxHigh[0] + maxHigh[1]) * 1.2;
+            total = (maxLow[0] + maxLow[1] + maxMid[0] + maxMid[1] +
+                            maxHigh[0] + maxHigh[1]) *
+                    1.2f;
 
             // prevent division by zero
-            if (total > 0)
-            {
+            if (total > 0) {
                 // Normalize low and high (mid not need, because it not change the color)
                 lo = (maxLow[0] + maxLow[1]) / total;
                 hi = (maxHigh[0] + maxHigh[1]) / total;
+            } else {
+                lo = hi = 0.0f;
             }
-            else
-                lo = hi = 0.0;
 
             // Set color
-            color.setHsvF(h, 1.0-hi, 1.0-lo);
+            color.setHsvF(h, 1.0f - hi, 1.0f - lo);
 
-            painter->setPen(color);
+            pen.setColor(color);
+
+            painter->setPen(pen);
             switch (m_alignment) {
                 case Qt::AlignBottom :
                 case Qt::AlignRight :
-                    painter->drawLine(
-                        x, breadth,
-                        x, breadth - (int)(heightFactor * (float)math_max(maxAll[0],maxAll[1])));
+                    painter->drawLine(x,
+                            breadth,
+                            x,
+                            breadth -
+                                    static_cast<int>(heightFactor * math_max(eqGain[0], eqGain[1]) *
+                                            (float)math_max(
+                                                    maxAll[0], maxAll[1])));
                     break;
                 case Qt::AlignTop :
                 case Qt::AlignLeft :
-                    painter->drawLine(
-                        x, 0,
-                        x, (int)(heightFactor * (float)math_max(maxAll[0],maxAll[1])));
+                    painter->drawLine(x,
+                            0,
+                            x,
+                            static_cast<int>(heightFactor * math_max(eqGain[0], eqGain[1]) *
+                                    (float)math_max(maxAll[0], maxAll[1])));
                     break;
                 default :
-                    painter->drawLine(
-                        x, (int)(halfBreadth - heightFactor * (float)maxAll[0]),
-                        x, (int)(halfBreadth + heightFactor * (float)maxAll[1]));
+                    painter->drawLine(x,
+                            static_cast<int>(halfBreadth -
+                                    heightFactor * eqGain[0] * (float)maxAll[0]),
+                            x,
+                            static_cast<int>(halfBreadth +
+                                    heightFactor * eqGain[1] * (float)maxAll[1]));
             }
         }
     }
-
-    painter->restore();
 }

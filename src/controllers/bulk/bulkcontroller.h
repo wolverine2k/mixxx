@@ -1,24 +1,19 @@
-/**
-  * @file bulkcontroller.h
-  * @author Neale Picket  neale@woozle.org
-  * @date Thu Jun 28 2012
-  * @brief USB Bulk controller backend
-  */
-
-#ifndef BULKCONTROLLER_H
-#define BULKCONTROLLER_H
+#pragma once
 
 #include <QAtomicInt>
+#include <QThread>
+#include <optional>
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#endif
 
 #include "controllers/controller.h"
-#include "controllers/hid/hidcontrollerpreset.h"
-#include "controllers/hid/hidcontrollerpresetfilehandler.h"
-#include "util/duration.h"
+#include "controllers/hid/legacyhidcontrollermapping.h"
 
 struct libusb_device_handle;
 struct libusb_context;
-struct libusb_device_descriptor;
 
+/// USB Bulk controller backend
 class BulkReader : public QThread {
     Q_OBJECT
   public:
@@ -28,7 +23,7 @@ class BulkReader : public QThread {
     void stop();
 
   signals:
-    void incomingData(QByteArray data, mixxx::Duration timestamp);
+    void incomingData(const QByteArray& data, mixxx::Duration timestamp);
 
   protected:
     void run();
@@ -42,70 +37,102 @@ class BulkReader : public QThread {
 class BulkController : public Controller {
     Q_OBJECT
   public:
-    BulkController(libusb_context* context, libusb_device_handle *handle,
-                   struct libusb_device_descriptor *desc);
+#ifndef Q_OS_ANDROID
+    BulkController(
+            libusb_context* context,
+            libusb_device_handle* handle,
+            struct libusb_device_descriptor* desc);
+#else
+    BulkController(
+            const QJniObject& usbDevice);
+#endif
     ~BulkController() override;
 
-    QString presetExtension() override;
+    QString mappingExtension() override;
 
-    ControllerPresetPointer getPreset() const override {
-        HidControllerPreset* pClone = new HidControllerPreset();
-        *pClone = m_preset;
-        return ControllerPresetPointer(pClone);
+    void setMapping(std::shared_ptr<LegacyControllerMapping> pMapping) override;
+
+    QList<LegacyControllerMapping::ScriptFileInfo> getMappingScriptFiles() override;
+    QList<std::shared_ptr<AbstractLegacyControllerSetting>> getMappingSettings() override;
+#ifdef MIXXX_USE_QML
+    QList<LegacyControllerMapping::QMLModuleInfo> getMappingModules() override;
+    QList<LegacyControllerMapping::ScreenInfo> getMappingInfoScreens() override;
+#endif
+
+    PhysicalTransportProtocol getPhysicalTransportProtocol() const override {
+        return PhysicalTransportProtocol::USB;
+    }
+    DataRepresentationProtocol getDataRepresentationProtocol() const override {
+        return DataRepresentationProtocol::USB_BULK_TRANSFER;
     }
 
-    bool savePreset(const QString fileName) const override;
+    QString getVendorString() const override {
+        return m_manufacturer;
+    }
+    QString getProductString() const override {
+        return m_product;
+    }
+    std::optional<uint16_t> getVendorId() const override {
+        return m_vendorId;
+    }
+    std::optional<uint16_t> getProductId() const override {
+        return m_productId;
+    }
+    QString getSerialNumber() const override {
+        return m_sUID;
+    }
 
-    void visit(const MidiControllerPreset* preset) override;
-    void visit(const HidControllerPreset* preset) override;
+    std::optional<uint8_t> getUsbInterfaceNumber() const override {
+        return m_interfaceNumber;
+    }
 
-    void accept(ControllerVisitor* visitor) override {
-        if (visitor) {
-            visitor->visit(this);
-        }
+    uint8_t getInEndpointAddr() const {
+        return m_inEndpointAddr;
+    }
+
+    uint8_t getOutEndpointAddr() const {
+        return m_outEndpointAddr;
     }
 
     bool isMappable() const override {
-        return m_preset.isMappable();
+        // On raw USB transfer level, there isn't any information about mappable controls
+        return false;
     }
 
-    bool matchPreset(const PresetInfo& preset) override;
+    bool matchMapping(const MappingInfo& mapping) override;
 
   protected:
-    Q_INVOKABLE void send(QList<int> data, unsigned int length);
-
-  private slots:
-    int open() override;
-    int close() override;
+    void send(const QList<int>& data, unsigned int length) override;
 
   private:
+    int open(const QString& resourcePath) override;
+    int close() override;
+
     // For devices which only support a single report, reportID must be set to
     // 0x0.
-    void send(QByteArray data) override;
-
-    // Returns a pointer to the currently loaded controller preset. For internal
-    // use only.
-    ControllerPreset* preset() override {
-        return &m_preset;
-    }
+    bool sendBytes(const QByteArray& data) override;
 
     bool matchProductInfo(const ProductInfo& product);
 
     libusb_context* m_context;
     libusb_device_handle *m_phandle;
+#ifdef Q_OS_ANDROID
+    QJniObject m_androidUsbDevice;
+    QJniObject m_androidConnection;
+#endif
 
     // Local copies of things we need from desc
 
-    unsigned short vendor_id;
-    unsigned short product_id;
-    unsigned char in_epaddr;
-    unsigned char out_epaddr;
-    QString manufacturer;
-    QString product;
+    std::uint16_t m_vendorId;
+    std::uint16_t m_productId;
+    std::uint8_t m_inEndpointAddr;
+    std::uint8_t m_outEndpointAddr;
+    std::optional<std::uint8_t> m_interfaceNumber;
+
+    QString m_manufacturer;
+    QString m_product;
 
     QString m_sUID;
     BulkReader* m_pReader;
-    HidControllerPreset m_preset;
+    std::unique_ptr<LegacyHidControllerMapping> m_pMapping;
 };
-
-#endif

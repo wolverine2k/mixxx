@@ -1,17 +1,4 @@
-/***************************************************************************
-                     encoderffmpegcore.h  -  core code for ffmpeg encoders
-                             -------------------
-    copyright            : (C) 2012-2013 by Tuukka Pasanen
-                           (C) 2007 by Wesley Stessens
-                           (C) 1994 by Xiph.org (encoder example)
-                           (C) ???? Tobias Rafreider (broadcast and recording fixes)
- ***************************************************************************/
-
-
-#ifndef ENCODERFFMPEGCORE_H
-#define ENCODERFFMPEGCORE_H
-
-#include <encoder/encoderffmpegresample.h>
+#pragma once
 
 extern "C" {
 #include <libavutil/opt.h>
@@ -25,22 +12,27 @@ extern "C" {
 #include <libavutil/avutil.h>
 #endif
 
-// Compability
+// Compatibility
 #include <libavutil/mathematics.h>
 #include <libavutil/opt.h>
 }
 
-#include <QByteArray>
 #include <QBuffer>
-
+#include <QByteArray>
+#include <QFile>
 #include <QLibrary>
 
-#include "util/types.h"
 #include "encoder/encoder.h"
-#include "track/track.h"
+#include "encoder/encoderffmpegresample.h"
+#include "track/track_decl.h"
+#include "util/types.h"
 
 class EncoderCallback;
 
+/// FFmpeg encoder class
+///
+/// Supports what FFmpeg is compiled to support and provides the same
+/// interface for all codecs.
 class EncoderFfmpegCore : public Encoder {
 public:
 #if LIBAVCODEC_VERSION_INT > 3544932
@@ -51,9 +43,12 @@ public:
                       CodecID codec = CODEC_ID_MP2);
 #endif
     ~EncoderFfmpegCore();
-    int initEncoder(int samplerate, QString errorMessage) override;
-    void encodeBuffer(const CSAMPLE *samples, const int size) override;
-    void updateMetaData(const QString& artist, const QString& title, const QString& album) override;
+    int initEncoder(mixxx::audio::SampleRate sampleRate, QString* pUserErrorMessage) override;
+    void encodeBuffer(const CSAMPLE* samples, const std::size_t bufferSize) override;
+    void updateMetaData(const QString& artist,
+            const QString& title,
+            const QString& album,
+            std::chrono::seconds timecode = {}) override;
     void flush() override;
     void setEncoderSettings(const EncoderSettings& settings) override;
 protected:
@@ -79,9 +74,6 @@ private:
     EncoderCallback* m_pCallback;
     TrackPointer m_pMetaData;
 
-    QString m_strMetaDataTitle;
-    QString m_strMetaDataArtist;
-    QString m_strMetaDataAlbum;
     QFile m_pFile;
 
     QByteArray m_strReadByteArray;
@@ -114,5 +106,3 @@ private:
     EncoderFfmpegResample *m_pResample;
     AVStream *m_pStream;
 };
-
-#endif

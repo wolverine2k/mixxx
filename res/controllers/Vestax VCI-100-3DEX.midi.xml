@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <MixxxMIDIPreset schemaVersion="1" mixxxVersion="1.8.0+">
   <info>
-    <name>Vestax VCI-100 Mixvibes 3Dex editon</name>
+    <name>Vestax VCI-100 (MixVibes 3DEX Editon)</name>
     <author>Julius Alexander Kohout edler von Dolnobransky</author>
     <description>Preliminary controller mapping for Vestax VCI-100 with scripts</description>
+    <manual>vestax_vci_100_mixvibes_3dex_edition</manual>
   </info>
   <controller id="Vestax VCI-100-3DEX ">
     <scriptfiles>
@@ -754,7 +755,7 @@
         <key>volume</key>
         <status>0xB0</status>
         <midino>0x46</midino>
-      </control>      
+      </control>
       <control>
         <group>[Flanger]</group>
         <key>lfoPeriod</key>
@@ -779,7 +780,7 @@
         <key>volume</key>
         <status>0xB0</status>
         <midino>0x54</midino>
-      </control>  
+      </control>
       <control>
         <group>[Flanger]</group>
         <key>lfoPeriod</key>
@@ -805,7 +806,7 @@
         <key>pregain</key>
         <status>0xB0</status>
         <midino>0x4A</midino>
-      </control>  
+      </control>
       <control>
         <group>[Sampler2]</group>
         <key>pregain</key>

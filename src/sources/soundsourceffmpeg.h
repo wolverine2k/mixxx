@@ -1,115 +1,17 @@
-#ifndef MIXXX_SOUNDSOURCEFFMPEG_H
-#define MIXXX_SOUNDSOURCEFFMPEG_H
+#pragma once
 
 extern "C" {
 
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-
-#ifndef __FFMPEGOLDAPI__
-#include <libavutil/avutil.h>
-#include <libavutil/opt.h>
-#endif
-
-// Compatibility
-#include <libavutil/mathematics.h>
-#include <libavutil/opt.h>
+#include <libswresample/swresample.h>
 
 } // extern "C"
 
-#include <QVector>
-
+#include "sources/readaheadframebuffer.h"
 #include "sources/soundsourceprovider.h"
 
-#include "util/memory.h" // std::unique_ptr<> + std::make_unique()
-
-#define AVSTREAM_FROM_API_VERSION_3_1 \
-    (LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 48, 0))
-
-// forward declaration
-class EncoderFfmpegResample;
-
-namespace {
-
-  // Because 3.1 changed API how to access thigs in AVStream
-  // we'll separate this logic in own wrapper class
-  class AVStreamWrapper {
-    public:
-        virtual AVMediaType getMediaTypeOfStream(AVStream* pStream) = 0;
-        virtual AVCodec* findDecoderForStream(AVStream* pStream) = 0;
-        virtual SINT getChannelCountOfStream(AVStream* pStream) = 0;
-        virtual SINT getSamplingRateOfStream(AVStream* pStream) = 0;
-        virtual AVSampleFormat getSampleFormatOfStream(AVStream* pStream) = 0;
-  };
-
-  // Implement classes for version befor 3.1 and after that
-#if AVSTREAM_FROM_API_VERSION_3_1
-  // This is after version 3.1
-  class AVStreamWrapperImpl : public AVStreamWrapper {
-    public:
-        AVMediaType getMediaTypeOfStream(AVStream* pStream) {
-             return pStream->codecpar->codec_type;
-        }
-
-        AVCodec* findDecoderForStream(AVStream* pStream) {
-            return avcodec_find_decoder(pStream->codecpar->codec_id);
-        }
-
-        SINT getChannelCountOfStream(AVStream* pStream) {
-            return pStream->codecpar->channels;
-        }
-
-        SINT getSamplingRateOfStream(AVStream* pStream) {
-            return pStream->codecpar->sample_rate;
-        }
-
-        AVSampleFormat getSampleFormatOfStream(AVStream* pStream) {
-            return (AVSampleFormat)pStream->codecpar->format;
-        }
-  };
-#else
-  class AVStreamWrapperImpl : public AVStreamWrapper {
-    public:
-        AVMediaType getMediaTypeOfStream(AVStream* pStream) {
-             return pStream->codec->codec_type;
-        }
-
-        AVCodec* findDecoderForStream(AVStream* pStream) {
-            return avcodec_find_decoder(pStream->codec->codec_id);
-        }
-
-        SINT getChannelCountOfStream(AVStream* pStream) {
-            return pStream->codec->channels;
-        }
-
-        SINT getSamplingRateOfStream(AVStream* pStream) {
-            return pStream->codec->sample_rate;
-        }
-
-        AVSampleFormat getSampleFormatOfStream(AVStream* pStream) {
-            return pStream->codec->sample_fmt;
-        }
-  };
-#endif
-
-  //AVStreamWrapperImpl *m_pAVStreamWrapper = new AVStreamWrapperImpl();
-  AVStreamWrapperImpl m_pAVStreamWrapper;
-
-}
-
-
 namespace mixxx {
-
-struct ffmpegLocationObject {
-    SINT pos;
-    SINT pts;
-    SINT startFrame;
-};
-
-struct ffmpegCacheObject {
-    SINT startFrame;
-    SINT length;
-    quint8 *bytes;
-};
 
 class SoundSourceFFmpeg : public SoundSource {
   public:
@@ -118,179 +20,222 @@ class SoundSourceFFmpeg : public SoundSource {
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
+    static QString formatErrorString(int errnum);
 
-    SINT readSampleFrames(SINT numberOfFrames, CSAMPLE* sampleBuffer) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            const WritableSampleFrames& sampleFrames) override;
+
+    virtual OpenResult tryOpen(
+            OpenMode mode,
+            const OpenParams& params) override;
 
   private:
-    OpenResult tryOpen(const AudioSourceConfig& audioSrcCfg) override;
+    const CSAMPLE* resampleDecodedAVFrame();
 
-    bool readFramesToCache(unsigned int count, SINT offset);
-    bool getBytesFromCache(CSAMPLE* buffer, SINT offset, SINT size);
-    SINT getSizeofCache();
-    void clearCache();
+    // Seek to the requested start index (if needed) or return false
+    // upon seek errors.
+    bool adjustCurrentPosition(
+            SINT startIndex);
 
-    unsigned int read(unsigned long size, SAMPLE*);
-
-    static AVFormatContext* openInputFile(const QString& fileName);
+    bool consumeNextAVPacket(
+            AVPacket** ppavNextPacket);
 
     // Takes ownership of an input format context and ensures that
     // the corresponding AVFormatContext is closed, either explicitly
     // or implicitly by the destructor. The wrapper can only be
     // moved, copying is disabled.
-    class ClosableInputAVFormatContextPtr final {
-    public:
-        explicit ClosableInputAVFormatContextPtr(AVFormatContext* pClosableInputFormatContext = nullptr)
-            : m_pClosableInputFormatContext(pClosableInputFormatContext) {
+    class InputAVFormatContextPtr final {
+      public:
+        explicit InputAVFormatContextPtr(AVFormatContext* pavInputFormatContext = nullptr)
+                : m_pavInputFormatContext(pavInputFormatContext) {
         }
-        explicit ClosableInputAVFormatContextPtr(const ClosableInputAVFormatContextPtr&) = delete;
-        explicit ClosableInputAVFormatContextPtr(ClosableInputAVFormatContextPtr&& that)
-            : m_pClosableInputFormatContext(that.m_pClosableInputFormatContext) {
-            that.m_pClosableInputFormatContext = nullptr;
+        InputAVFormatContextPtr(const InputAVFormatContextPtr&) = delete;
+        InputAVFormatContextPtr(InputAVFormatContextPtr&& that)
+                : m_pavInputFormatContext(that.m_pavInputFormatContext) {
+            that.m_pavInputFormatContext = nullptr;
         }
-        ~ClosableInputAVFormatContextPtr() {
+        ~InputAVFormatContextPtr() {
             close();
         }
 
-        void take(AVFormatContext** ppClosableInputFormatContext);
+        void take(AVFormatContext** ppavInputFormatContext);
 
         void close();
 
-        friend void swap(ClosableInputAVFormatContextPtr& lhs, ClosableInputAVFormatContextPtr& rhs) {
-            std::swap(lhs.m_pClosableInputFormatContext, rhs.m_pClosableInputFormatContext);
+        friend void swap(InputAVFormatContextPtr& lhs, InputAVFormatContextPtr& rhs) {
+            std::swap(lhs.m_pavInputFormatContext, rhs.m_pavInputFormatContext);
         }
 
-        ClosableInputAVFormatContextPtr& operator=(const ClosableInputAVFormatContextPtr&) = delete;
-        ClosableInputAVFormatContextPtr& operator=(ClosableInputAVFormatContextPtr&& that) = delete;
+        InputAVFormatContextPtr& operator=(const InputAVFormatContextPtr&) = delete;
+        InputAVFormatContextPtr& operator=(InputAVFormatContextPtr&& that) {
+            swap(*this, that);
+            return *this;
+        }
 
-        AVFormatContext* operator->() { return m_pClosableInputFormatContext; }
-        operator AVFormatContext*() { return m_pClosableInputFormatContext; }
+        AVFormatContext* operator->() {
+            return m_pavInputFormatContext;
+        }
+        operator AVFormatContext*() {
+            return m_pavInputFormatContext;
+        }
 
-    private:
-        AVFormatContext* m_pClosableInputFormatContext;
+      private:
+        AVFormatContext* m_pavInputFormatContext;
     };
-    ClosableInputAVFormatContextPtr m_pInputFormatContext;
 
-    static OpenResult openAudioStream(AVCodecContext* pCodecContext, AVCodec *pDecoder);
-
-    // Takes ownership of an opened (audio) stream and ensures that
-    // the corresponding AVStream is closed, either explicitly or
-    // implicitly by the destructor. The wrapper can only be moved,
-    // copying is disabled.
-    class ClosableAVStreamPtr final {
-    public:
-        explicit ClosableAVStreamPtr(AVStream* pClosableStream = nullptr)
-            : m_pClosableStream(pClosableStream) {
-        }
-        explicit ClosableAVStreamPtr(const ClosableAVStreamPtr&) = delete;
-        explicit ClosableAVStreamPtr(ClosableAVStreamPtr&& that)
-            : m_pClosableStream(that.m_pClosableStream) {
-            that.m_pClosableStream = nullptr;
-        }
-        ~ClosableAVStreamPtr() {
-            close();
-        }
-
-        void take(AVStream** ppClosableStream);
-        void close();
-
-        friend void swap(ClosableAVStreamPtr& lhs, ClosableAVStreamPtr& rhs) {
-            std::swap(lhs.m_pClosableStream, rhs.m_pClosableStream);
-        }
-
-        ClosableAVStreamPtr& operator=(const ClosableAVStreamPtr&) = delete;
-        ClosableAVStreamPtr& operator=(ClosableAVStreamPtr&& that) = delete;
-
-        AVStream* operator->() { return m_pClosableStream; }
-        operator AVStream*() { return m_pClosableStream; }
-
-    private:
-        AVStream* m_pClosableStream;
-    };
-    ClosableAVStreamPtr m_pAudioStream;
-
-
-#if AVSTREAM_FROM_API_VERSION_3_1
+  protected:
     // Takes ownership of an opened (audio) codec context and ensures that
     // the corresponding AVCodecContext is closed, either explicitly or
     // implicitly by the destructor. The wrapper can only be moved,
     // copying is disabled.
-    //
-    // This is prior new API changes made in FFMmpeg 3.1
-    // before that we can use AVStream->codec to access AVCodecContext
-    class ClosableAVCodecContextPtr final {
-    public:
-        explicit ClosableAVCodecContextPtr(AVCodecContext* pClosableContext = nullptr)
-            : m_pClosableContext(pClosableContext) {
+    class AVCodecContextPtr final {
+      public:
+        static AVCodecContextPtr alloc(const AVCodec* codec);
+
+        explicit AVCodecContextPtr(AVCodecContext* pavCodecContext = nullptr)
+                : m_pavCodecContext(pavCodecContext) {
         }
-        explicit ClosableAVCodecContextPtr(const ClosableAVCodecContextPtr&) = delete;
-        explicit ClosableAVCodecContextPtr(ClosableAVCodecContextPtr&& that)
-            : m_pClosableContext(that.m_pClosableContext) {
-            that.m_pClosableContext = nullptr;
+        AVCodecContextPtr(const AVCodecContextPtr&) = delete;
+        AVCodecContextPtr(AVCodecContextPtr&& that)
+                : m_pavCodecContext(that.m_pavCodecContext) {
+            that.m_pavCodecContext = nullptr;
         }
-        ~ClosableAVCodecContextPtr() {
+        ~AVCodecContextPtr() {
             close();
         }
 
-        void take(AVCodecContext** ppClosableContext);
+        void take(AVCodecContext** ppavCodecContext);
         void close();
 
-        friend void swap(ClosableAVCodecContextPtr& lhs, ClosableAVCodecContextPtr& rhs) {
-            std::swap(lhs.m_pClosableContext, rhs.m_pClosableContext);
+        friend void swap(AVCodecContextPtr& lhs, AVCodecContextPtr& rhs) {
+            std::swap(lhs.m_pavCodecContext, rhs.m_pavCodecContext);
         }
 
-        ClosableAVCodecContextPtr& operator=(const ClosableAVCodecContextPtr&) = delete;
-        ClosableAVCodecContextPtr& operator=(ClosableAVCodecContextPtr&& that) = delete;
+        AVCodecContextPtr& operator=(const AVCodecContextPtr&) = delete;
+        AVCodecContextPtr& operator=(AVCodecContextPtr&& that) {
+            swap(*this, that);
+            return *this;
+        }
 
-        AVCodecContext* operator->() { return m_pClosableContext; }
-        operator AVCodecContext*() { return m_pClosableContext; }
+        AVCodecContext* operator->() {
+            return m_pavCodecContext;
+        }
+        operator AVCodecContext*() {
+            return m_pavCodecContext;
+        }
 
-    private:
-        AVCodecContext* m_pClosableContext;
+      private:
+        AVCodecContext* m_pavCodecContext;
     };
-    ClosableAVCodecContextPtr m_pAudioContext;
+
+    bool initResampling(
+            audio::ChannelCount* pResampledChannelCount,
+            audio::SampleRate* pResampledSampleRate);
+
+  public:
+    // The following static functions are used by children and closely related
+    // classes, this is why these static methods aren't defined as protected.
+    static AVFormatContext* openInputFile(const QString& fileName);
+    static bool openDecodingContext(AVCodecContext* pavCodecContext);
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 28, 100) // FFmpeg 5.1
+    static void initChannelLayoutFromStream(
+            AVChannelLayout* pUninitializedChannelLayout,
+            const AVStream& avStream);
+#else
+    static int64_t getStreamChannelLayout(const AVStream& avStream);
+#endif
+    static IndexRange getStreamFrameIndexRange(const AVStream& avStream);
+    static SINT getStreamSeekPrerollFrameCount(const AVStream& avStream);
+    static FrameCount frameBufferCapacityForStream(const AVStream& avStream);
+
+  protected:
+    InputAVFormatContextPtr m_pavInputFormatContext;
+    AVStream* m_pavStream;
+    AVCodecContextPtr m_pavCodecContext;
+    AVFrame* m_pavDecodedFrame;
+    FrameCount m_seekPrerollFrameCount;
+    ReadAheadFrameBuffer m_frameBuffer;
+
+    // FFmpeg static constants
+    static constexpr AVSampleFormat s_avSampleFormat = AV_SAMPLE_FMT_FLT;
+
+    // Resampler
+    class SwrContextPtr final {
+      public:
+        explicit SwrContextPtr(SwrContext* m_pSwrContext = nullptr)
+                : m_pSwrContext(m_pSwrContext) {
+        }
+        SwrContextPtr(const SwrContextPtr&) = delete;
+        SwrContextPtr(SwrContextPtr&& that)
+                : m_pSwrContext(that.m_pSwrContext) {
+            that.m_pSwrContext = nullptr;
+        }
+        ~SwrContextPtr() {
+            close();
+        }
+
+        void take(SwrContext** ppSwrContext);
+
+        void close();
+
+        friend void swap(SwrContextPtr& lhs, SwrContextPtr& rhs) {
+            std::swap(lhs.m_pSwrContext, rhs.m_pSwrContext);
+        }
+
+        SwrContextPtr& operator=(const SwrContextPtr&) = delete;
+        SwrContextPtr& operator=(SwrContextPtr&& that) {
+            swap(*this, that);
+            return *this;
+        }
+
+        SwrContext* operator->() {
+            return m_pSwrContext;
+        }
+        operator SwrContext*() {
+            return m_pSwrContext;
+        }
+
+      private:
+        SwrContext* m_pSwrContext;
+    };
+    SwrContextPtr m_pSwrContext;
+
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 28, 100) // FFmpeg 5.1
+    AVChannelLayout m_avStreamChannelLayout;
+    AVChannelLayout m_avResampledChannelLayout;
+#else
+    uint64_t m_avStreamChannelLayout;
+    uint64_t m_avResampledChannelLayout;
 #endif
 
-    std::unique_ptr<EncoderFfmpegResample> m_pResample;
+    AVPacket* m_pavPacket;
 
-    SINT m_currentMixxxFrameIndex;
+    AVFrame* m_pavResampledFrame;
 
-    bool m_bIsSeeked;
-
-    SINT m_lCacheFramePos;
-    SINT m_lCacheStartFrame;
-    SINT m_lCacheEndFrame;
-    SINT m_lCacheLastPos;
-    QVector<struct ffmpegCacheObject  *> m_SCache;
-    QVector<struct ffmpegLocationObject  *> m_SJumpPoints;
-    SINT m_lLastStoredPos;
-    SINT m_lStoreCount;
-    SINT m_lStoredSeekPoint;
-    struct ffmpegLocationObject *m_SStoredJumpPoint;
+    const unsigned int m_avutilVersion;
 };
 
-class SoundSourceProviderFFmpeg: public SoundSourceProvider {
+class SoundSourceProviderFFmpeg : public SoundSourceProvider {
   public:
-    SoundSourceProviderFFmpeg();
+    static const QString kDisplayName;
 
-    QString getName() const override {
-        return "FFmpeg";
+    ~SoundSourceProviderFFmpeg() override = default;
+
+    QString getDisplayName() const override {
+        return kDisplayName + QChar(' ') + getVersionString();
     }
+
+    QStringList getSupportedFileTypes() const override;
 
     SoundSourceProviderPriority getPriorityHint(
-            const QString& supportedFileExtension) const override {
-        Q_UNUSED(supportedFileExtension);
-        // FFmpeg will only be used as the last resort
-        return SoundSourceProviderPriority::LOWEST;
-    }
-
-    QStringList getSupportedFileExtensions() const override;
+            const QString& supportedFileType) const override;
 
     SoundSourcePointer newSoundSource(const QUrl& url) override {
         return newSoundSourceFromUrl<SoundSourceFFmpeg>(url);
     }
+
+    QString getVersionString() const;
 };
 
 } // namespace mixxx
-
-#endif // MIXXX_SOUNDSOURCEFFMPEG_H

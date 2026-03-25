@@ -1,52 +1,36 @@
-#include <QDomNode>
-#include <QPaintEvent>
+#include "waveformrendererendoftrack.h"
+
 #include <QPainter>
 
-#include "waveformrendererendoftrack.h"
-#include "waveformwidgetrenderer.h"
-
-#include "control/controlobject.h"
 #include "control/controlproxy.h"
-
+#include "util/painterscope.h"
+#include "waveform/waveformwidgetfactory.h"
+#include "waveformwidgetrenderer.h"
 #include "widget/wskincolor.h"
-#include "widget/wwidget.h"
 
-#include "util/timer.h"
+namespace {
+
+constexpr int kBlinkingPeriodMillis = 1000;
+
+} // anonymous namespace
 
 WaveformRendererEndOfTrack::WaveformRendererEndOfTrack(
         WaveformWidgetRenderer* waveformWidgetRenderer)
     : WaveformRendererAbstract(waveformWidgetRenderer),
-      m_pEndOfTrackControl(NULL),
-      m_endOfTrackEnabled(false),
-      m_pTrackSampleRate(NULL),
-      m_pPlayControl(NULL),
-      m_pLoopControl(NULL),
-      m_color(200, 25, 20),
-      m_remainingTimeTriggerSeconds(30),
-      m_blinkingPeriodMillis(1000) {
+      m_pEndOfTrackControl(nullptr),
+      m_pTimeRemainingControl(nullptr) {
 }
 
 WaveformRendererEndOfTrack::~WaveformRendererEndOfTrack() {
-    delete m_pEndOfTrackControl;
-    delete m_pTrackSampleRate;
-    delete m_pPlayControl;
-    delete m_pLoopControl;
 }
 
 bool WaveformRendererEndOfTrack::init() {
     m_timer.restart();
 
-    m_pEndOfTrackControl = new ControlProxy(
+    m_pEndOfTrackControl = std::make_unique<ControlProxy>(
             m_waveformRenderer->getGroup(), "end_of_track");
-    m_pEndOfTrackControl->slotSet(0.);
-    m_endOfTrackEnabled = false;
-
-    m_pTrackSampleRate = new ControlProxy(
-            m_waveformRenderer->getGroup(), "track_samplerate");
-    m_pPlayControl = new ControlProxy(
-            m_waveformRenderer->getGroup(), "play");
-    m_pLoopControl = new ControlProxy(
-            m_waveformRenderer->getGroup(), "loop_enabled");
+    m_pTimeRemainingControl = std::make_unique<ControlProxy>(
+            m_waveformRenderer->getGroup(), "time_remaining");
     return true;
 }
 
@@ -54,7 +38,7 @@ void WaveformRendererEndOfTrack::setup(const QDomNode& node, const SkinContext& 
     m_color = QColor(200, 25, 20);
     const QString endOfTrackColorName = context.selectString(node, "EndOfTrackColor");
     if (!endOfTrackColorName.isNull()) {
-        m_color.setNamedColor(endOfTrackColorName);
+        m_color = QColor(endOfTrackColorName);
         m_color = WSkinColor::getCorrectColor(m_color);
     }
     m_pen = QPen(QBrush(m_color), 2.5 * scaleFactor());
@@ -67,79 +51,39 @@ void WaveformRendererEndOfTrack::onResize() {
 
 void WaveformRendererEndOfTrack::draw(QPainter* painter,
                                       QPaintEvent* /*event*/) {
-
-    const double trackSamples = m_waveformRenderer->getTrackSamples();
-    const double sampleRate = m_pTrackSampleRate->get();
-    /*qDebug() << "WaveformRendererEndOfTrack :: "
-             << "trackSamples" << trackSamples
-             << "sampleRate" << sampleRate
-             << "m_playControl->get()" << m_playControl->get()
-             << "m_loopControl->get()" << m_loopControl->get();*/
-
-    m_endOfTrackEnabled = m_pEndOfTrackControl->get() > 0.5;
-    m_remainingTimeTriggerSeconds = WaveformWidgetFactory::instance()->getEndOfTrackWarningTime();
-    // special case of track not long enough
-    const double trackLength = 0.5 * trackSamples / sampleRate;
-
-    if (sampleRate < 0.1 //not ready
-            || trackSamples < 0.1 //not ready
-            || m_pPlayControl->get() < 0.5 //not playing
-            || m_pLoopControl->get() > 0.5 //in loop
-            || trackLength <= m_remainingTimeTriggerSeconds //track too short
-            ) {
-        if (m_endOfTrackEnabled) {
-            m_pEndOfTrackControl->set(0.0);
-            m_endOfTrackEnabled = false;
-        }
+    if (!m_pEndOfTrackControl->toBool()) {
         return;
     }
 
-    const double dPlaypos = m_waveformRenderer->getPlayPos();
-    const double remainingFrames = (1.0 - dPlaypos) * 0.5 * trackSamples;
-    const double remainingTime = remainingFrames / sampleRate;
+    // ScopedTimer t(QStringLiteral("WaveformRendererEndOfTrack::draw"));
 
-    if (remainingTime > m_remainingTimeTriggerSeconds) {
-        if (m_endOfTrackEnabled) {
-            m_pEndOfTrackControl->set(0.);
-            m_endOfTrackEnabled = false;
-        }
-        return;
-    }
+    const int elapsed = m_timer.elapsed().toIntegerMillis() % kBlinkingPeriodMillis;
 
-    // end of track is on
-    if (!m_endOfTrackEnabled) {
-        m_pEndOfTrackControl->slotSet(1.);
-        m_endOfTrackEnabled = true;
+    const double blinkIntensity = (double)(2 * abs(elapsed - kBlinkingPeriodMillis / 2)) /
+            kBlinkingPeriodMillis;
 
-        //qDebug() << "EndOfTrack ON";
-    }
+    const double remainingTime = m_pTimeRemainingControl->get();
+    const double remainingTimeTriggerSeconds = WaveformWidgetFactory::instance()->getEndOfTrackWarningTime();
+    const double criticalIntensity = (remainingTimeTriggerSeconds - remainingTime) /
+            remainingTimeTriggerSeconds;
 
-    //ScopedTimer t("WaveformRendererEndOfTrack::draw");
+    PainterScope PainterScope(painter);
 
-    const int elapsed = m_timer.elapsed().toIntegerMillis() % m_blinkingPeriodMillis;
-
-    const double blickIntensity = (double)(2 * abs(elapsed - m_blinkingPeriodMillis/2)) /
-            m_blinkingPeriodMillis;
-    const double criticalIntensity = (m_remainingTimeTriggerSeconds - remainingTime) /
-            m_remainingTimeTriggerSeconds;
-
-    painter->save();
     painter->resetTransform();
-    painter->setOpacity(0.5 * blickIntensity);
+    painter->setOpacity(0.5 * blinkIntensity);
     painter->setPen(m_pen);
     painter->drawRect(1, 1,
             m_waveformRenderer->getWidth() - 2, m_waveformRenderer->getHeight() - 2);
 
-    painter->setOpacity(0.5 * 0.25 * criticalIntensity * blickIntensity);
+    painter->setOpacity(0.5 * 0.25 * criticalIntensity * blinkIntensity);
     painter->setPen(QPen(Qt::transparent));
     painter->setBrush(m_color);
     painter->drawRects(m_backRects);
     // This is significant slower
-    //painter->setOpacity(0.5 * criticalIntensity * blickIntensity);
+    //painter->setOpacity(0.5 * criticalIntensity * blinkIntensity);
     //painter->fillRect(m_waveformRenderer->getWidth()/2, 1,
     //        m_waveformRenderer->getWidth() - 2, m_waveformRenderer->getHeight() - 2,
     //        m_gradient);
-    painter->restore();
 }
 
 void WaveformRendererEndOfTrack::generateBackRects() {

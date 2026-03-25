@@ -1,5 +1,9 @@
 #include "control/controlmodel.h"
 
+#include <QStringBuilder>
+
+#include "moc_controlmodel.cpp"
+
 ControlModel::ControlModel(QObject* pParent)
         : QAbstractTableModel(pParent) {
 
@@ -9,6 +13,33 @@ ControlModel::ControlModel(QObject* pParent)
     setHeaderData(CONTROL_COLUMN_PARAMETER, Qt::Horizontal, tr("Parameter"));
     setHeaderData(CONTROL_COLUMN_TITLE, Qt::Horizontal, tr("Title"));
     setHeaderData(CONTROL_COLUMN_DESCRIPTION, Qt::Horizontal, tr("Description"));
+
+    // Add all controls to Model
+    const QList<QSharedPointer<ControlDoublePrivate>> controlsList =
+            ControlDoublePrivate::getAllInstances();
+
+    QSet<ConfigKey> controlKeys;
+
+    // Reserve memory for m_controls, which will be used later in addControl
+    m_controls.reserve(controlsList.size());
+
+    for (const QSharedPointer<ControlDoublePrivate>& pControl : controlsList) {
+        if (!pControl) {
+            continue;
+        }
+
+        // Skip duplicates
+        // This skips either the alias or original key, whatever comes first
+        // in controlsList, but that doesn't make a difference here.
+        if (controlKeys.contains(pControl->getKey())) {
+            continue;
+        }
+        controlKeys.insert(pControl->getKey());
+
+        addControl(pControl->getKey(),
+                pControl->name(),
+                pControl->description());
+    }
 }
 
 ControlModel::~ControlModel() {
@@ -21,13 +52,19 @@ void ControlModel::addControl(const ConfigKey& key,
     info.key = key;
     info.title = title;
     info.description = description;
-    info.pControl = new ControlProxy(this);
-    info.pControl->initialize(info.key);
+    info.pControl = new ControlProxy(info.key, this);
 
-    beginInsertRows(QModelIndex(), m_controls.size(),
-                    m_controls.size());
+    const int row = m_controls.size();
+
+    beginInsertRows(QModelIndex(), row, row);
     m_controls.append(info);
     endInsertRows();
+
+    info.pControl->connectValueChanged(this, [this, row]() {
+        const QModelIndex topLeft = index(row, CONTROL_COLUMN_VALUE);
+        const QModelIndex bottomRight = index(row, CONTROL_COLUMN_PARAMETER);
+        emit dataChanged(topLeft, bottomRight);
+    });
 }
 
 int ControlModel::rowCount(const QModelIndex& parent) const {
@@ -59,7 +96,6 @@ QVariant ControlModel::data(const QModelIndex& index,
     }
 
     const ControlInfo& control = m_controls.at(row);
-    QString value;
     switch (column) {
         case CONTROL_COLUMN_GROUP:
             return control.key.group;
@@ -74,7 +110,7 @@ QVariant ControlModel::data(const QModelIndex& index,
         case CONTROL_COLUMN_DESCRIPTION:
             return control.description;
         case CONTROL_COLUMN_FILTER:
-            return control.key.group + "," + control.key.item;
+            return QVariant(control.key.group % QStringLiteral(",") % control.key.item);
     }
     return QVariant();
 }
@@ -98,7 +134,7 @@ bool ControlModel::setHeaderData(int section,
     }
 
     m_headerInfo[section][role] = value;
-    emit(headerDataChanged(orientation, section, section));
+    emit headerDataChanged(orientation, section, section);
     return true;
 }
 
@@ -119,15 +155,15 @@ QVariant ControlModel::headerData(int section,
     return QAbstractTableModel::headerData(section, orientation, role);
 }
 
-bool ControlModel::setData(const QModelIndex& index,
-                           const QVariant& value,
-                           int role) {
-    if (!index.isValid() || role != Qt::EditRole) {
+bool ControlModel::setData(const QModelIndex& modelIndex,
+        const QVariant& value,
+        int role) {
+    if (!modelIndex.isValid() || role != Qt::EditRole) {
         return false;
     }
 
-    int row = index.row();
-    int column = index.column();
+    int row = modelIndex.row();
+    int column = modelIndex.column();
 
     if (row < 0 || row >= m_controls.size()) {
         return false;
@@ -135,12 +171,15 @@ bool ControlModel::setData(const QModelIndex& index,
 
     ControlInfo& control = m_controls[row];
 
+    static_assert(CONTROL_COLUMN_VALUE + 1 == CONTROL_COLUMN_PARAMETER);
     switch (column) {
         case CONTROL_COLUMN_VALUE:
             control.pControl->set(value.toDouble());
+            emit dataChanged(modelIndex, index(modelIndex.row(), CONTROL_COLUMN_PARAMETER));
             return true;
         case CONTROL_COLUMN_PARAMETER:
             control.pControl->setParameter(value.toDouble());
+            emit dataChanged(index(modelIndex.row(), CONTROL_COLUMN_VALUE), modelIndex);
             return true;
     }
 

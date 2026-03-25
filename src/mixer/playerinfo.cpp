@@ -1,33 +1,29 @@
-/***************************************************************************
-                      playerinfo.cpp  -  Helper class to have easy access
-                                         to a lot of data (singleton)
-                             -------------------
-    copyright            : (C) 2007 by Wesley Stessens
- ***************************************************************************/
-
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
+// Helper class to have easy access
 #include "mixer/playerinfo.h"
 
-#include <QMutexLocker>
-
-#include "control/controlobject.h"
-#include "engine/enginechannel.h"
+#include "engine/channels/enginechannel.h"
 #include "engine/enginexfader.h"
 #include "mixer/playermanager.h"
+#include "moc_playerinfo.cpp"
+#include "track/track.h"
+#include "util/compatibility/qmutex.h"
 
-static const int kPlayingDeckUpdateIntervalMillis = 2000;
-static PlayerInfo* m_pPlayerInfo = NULL;
+namespace {
+
+constexpr int kPlayingDeckUpdateIntervalMillis = 2000;
+
+PlayerInfo* s_pPlayerInfo = nullptr;
+
+const QString kAppGroup = QStringLiteral("[App]");
+const QString kMasterGroup = QStringLiteral("[Master]");
+
+} // namespace
 
 PlayerInfo::PlayerInfo()
-        : m_pCOxfader(new ControlProxy("[Master]","crossfader", this)),
+        : m_xfader(kMasterGroup, QStringLiteral("crossfader")),
+          m_numDecks(kAppGroup, QStringLiteral("num_decks")),
+          m_numSamplers(kAppGroup, QStringLiteral("num_samplers")),
+          m_numPreviewDecks(kAppGroup, QStringLiteral("num_preview_decks")),
           m_currentlyPlayingDeck(-1) {
     startTimer(kPlayingDeckUpdateIntervalMillis);
 }
@@ -37,39 +33,55 @@ PlayerInfo::~PlayerInfo() {
     clearControlCache();
 }
 
+PlayerInfo& PlayerInfo::create() {
+    VERIFY_OR_DEBUG_ASSERT(!s_pPlayerInfo) {
+        return *s_pPlayerInfo;
+    }
+    s_pPlayerInfo = new PlayerInfo();
+    return *s_pPlayerInfo;
+}
+
 // static
 PlayerInfo& PlayerInfo::instance() {
-    if (!m_pPlayerInfo) {
-        m_pPlayerInfo = new PlayerInfo();
+    VERIFY_OR_DEBUG_ASSERT(s_pPlayerInfo) {
+        s_pPlayerInfo = new PlayerInfo();
     }
-    return *m_pPlayerInfo;
+    return *s_pPlayerInfo;
 }
 
 // static
 void PlayerInfo::destroy() {
-    delete m_pPlayerInfo;
+    delete s_pPlayerInfo;
+    s_pPlayerInfo = nullptr;
 }
 
 TrackPointer PlayerInfo::getTrackInfo(const QString& group) {
-    QMutexLocker locker(&m_mutex);
+    const auto locker = lockMutex(&m_mutex);
     return m_loadedTrackMap.value(group);
 }
 
-void PlayerInfo::setTrackInfo(const QString& group, const TrackPointer& track) {
+void PlayerInfo::setTrackInfo(const QString& group, const TrackPointer& pTrack) {
     TrackPointer pOld;
     { // Scope
-        QMutexLocker locker(&m_mutex);
+        const auto locker = lockMutex(&m_mutex);
         pOld = m_loadedTrackMap.value(group);
-        m_loadedTrackMap.insert(group, track);
+        m_loadedTrackMap.insert(group, pTrack);
     }
-    if (pOld) {
-        emit(trackUnloaded(group, pOld));
+    emit trackChanged(group, pTrack, pOld);
+
+    if (pTrack) {
+        updateCurrentPlayingDeck();
+
+        int playingDeck = m_currentlyPlayingDeck;
+        if (playingDeck >= 0 &&
+                group == PlayerManager::groupForDeck(playingDeck)) {
+            emit currentPlayingTrackChanged(pTrack);
+        }
     }
-    emit(trackLoaded(group, track));
 }
 
 bool PlayerInfo::isTrackLoaded(const TrackPointer& pTrack) const {
-    QMutexLocker locker(&m_mutex);
+    const auto locker = lockMutex(&m_mutex);
     QMapIterator<QString, TrackPointer> it(m_loadedTrackMap);
     while (it.hasNext()) {
         it.next();
@@ -80,14 +92,28 @@ bool PlayerInfo::isTrackLoaded(const TrackPointer& pTrack) const {
     return false;
 }
 
+QStringList PlayerInfo::getPlayerGroupsWithTracksLoaded(const TrackPointerList& tracks) const {
+    const auto locker = lockMutex(&m_mutex);
+    QStringList groups;
+    QMapIterator<QString, TrackPointer> it(m_loadedTrackMap);
+    while (it.hasNext()) {
+        it.next();
+        TrackPointer pLoadedTrack = it.value();
+        if (pLoadedTrack && tracks.contains(pLoadedTrack)) {
+            groups.append(it.key());
+        }
+    }
+    return groups;
+}
+
 QMap<QString, TrackPointer> PlayerInfo::getLoadedTracks() {
-    QMutexLocker locker(&m_mutex);
+    const auto locker = lockMutex(&m_mutex);
     QMap<QString, TrackPointer> ret = m_loadedTrackMap;
     return ret;
 }
 
 bool PlayerInfo::isFileLoaded(const QString& track_location) const {
-    QMutexLocker locker(&m_mutex);
+    const auto locker = lockMutex(&m_mutex);
     QMapIterator<QString, TrackPointer> it(m_loadedTrackMap);
     while (it.hasNext()) {
         it.next();
@@ -107,12 +133,23 @@ void PlayerInfo::timerEvent(QTimerEvent* pTimerEvent) {
 }
 
 void PlayerInfo::updateCurrentPlayingDeck() {
-    QMutexLocker locker(&m_mutex);
+    auto locker = lockMutex(&m_mutex);
 
     double maxVolume = 0;
     int maxDeck = -1;
 
-    for (int i = 0; i < (int)PlayerManager::numDecks(); ++i) {
+    CSAMPLE_GAIN xfl, xfr;
+    // TODO: supply correct parameters to the function. If the hamster style
+    // for the crossfader is enabled, the result is currently wrong.
+    EngineXfader::getXfadeGains(m_xfader.get(),
+            1.0,
+            0.0,
+            MIXXX_XFADER_ADDITIVE,
+            false,
+            &xfl,
+            &xfr);
+
+    for (int i = 0; i < numDecks(); ++i) {
         DeckControls* pDc = getDeckControls(i);
 
         if (pDc->m_play.get() == 0.0) {
@@ -128,13 +165,7 @@ void PlayerInfo::updateCurrentPlayingDeck() {
             continue;
         }
 
-        double xfl, xfr;
-        // TODO: supply correct parameters to the function. If the hamster style
-        // for the crossfader is enabled, the result is currently wrong.
-        EngineXfader::getXfadeGains(m_pCOxfader->get(), 1.0, 0.0, MIXXX_XFADER_ADDITIVE, false,
-                                    &xfl, &xfr);
-
-        int orient = pDc->m_orientation.get();
+        const auto orient = static_cast<int>(pDc->m_orientation.get());
         double xfvol;
         if (orient == EngineChannel::LEFT) {
             xfvol = xfl;
@@ -150,16 +181,19 @@ void PlayerInfo::updateCurrentPlayingDeck() {
             maxVolume = dvol;
         }
     }
-    if (maxDeck != m_currentlyPlayingDeck) {
-        m_currentlyPlayingDeck = maxDeck;
-        locker.unlock();
-        emit(currentPlayingDeckChanged(maxDeck));
-        emit(currentPlayingTrackChanged(getCurrentPlayingTrack()));
+    locker.unlock();
+
+    int oldDeck = m_currentlyPlayingDeck.fetchAndStoreRelease(maxDeck);
+    if (maxDeck != oldDeck) {
+        emit currentPlayingDeckChanged(maxDeck);
+        // Note: When starting Auto-DJ "play" might be processed before a new
+        // is track is fully loaded. currentPlayingTrackChanged() is then emitted
+        // after setTrackInfo().
+        emit currentPlayingTrackChanged(getCurrentPlayingTrack());
     }
 }
 
 int PlayerInfo::getCurrentPlayingDeck() {
-    QMutexLocker locker(&m_mutex);
     return m_currentlyPlayingDeck;
 }
 
@@ -184,4 +218,16 @@ void PlayerInfo::clearControlCache() {
         delete m_deckControlList[i];
     }
     m_deckControlList.clear();
+}
+
+int PlayerInfo::numDecks() const {
+    return static_cast<int>(m_numDecks.get());
+}
+
+int PlayerInfo::numPreviewDecks() const {
+    return static_cast<int>(m_numPreviewDecks.get());
+}
+
+int PlayerInfo::numSamplers() const {
+    return static_cast<int>(m_numSamplers.get());
 }

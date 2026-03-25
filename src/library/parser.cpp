@@ -1,81 +1,55 @@
-//
-// C++ Implementation: parser
-//
-// Description: superclass for external formats parsers
-//
-//
-// Author: Ingo Kossyk <kossyki@cs.tu-berlin.de>, (C) 2004
-// Author: Tobias Rafreider trafreider@mixxx.org, (C) 2011
-//
-// Copyright: See COPYING file that comes with this distribution
-//
-//
-
-#include <QtDebug>
-#include <QFile>
-#include <QIODevice>
-
 #include "library/parser.h"
 
-/**
-   @author Ingo Kossyk (kossyki@cs.tu-berlin.de)
- **/
+#include <QDir>
+#include <QUrl>
+#include <QtDebug>
 
+#include "library/parsercsv.h"
+#include "library/parserm3u.h"
+#include "library/parserpls.h"
 
-Parser::Parser() : QObject()
-{
+// static
+bool Parser::isPlaylistFilenameSupported(const QString& playlistFile) {
+    return ParserM3u::isPlaylistFilenameSupported(playlistFile) ||
+            ParserPls::isPlaylistFilenameSupported(playlistFile) ||
+            ParserCsv::isPlaylistFilenameSupported(playlistFile);
 }
 
-Parser::~Parser()
-{
-
-
-}
-
-void Parser::clearLocations()
-{
-    m_sLocations.clear();
-}
-
-long Parser::countParsed()
-{
-    return (long)m_sLocations.count();
-}
-
-bool Parser::isFilepath(QString sFilepath) {
-    QFile file(sFilepath);
-    bool exists = file.exists();
-    file.close();
-    return exists;
-}
-
-bool Parser::isBinary(QString filename) {
-    QFile file(filename);
-
-    if (file.open(QIODevice::ReadOnly)) {
-        char c;
-        unsigned char uc;
-
-        if(!file.getChar(&c))
-        {
-          qDebug() << "Parser: Error reading stream on " << filename;
-          return true; //should this raise an exception?
-        }
-
-        uc = uchar(c);
-
-        if(!(33<=uc && uc<=127))  //Starting byte is no character
-        {
-            file.close();
-            return true;
-        }
-
-    } else{
-        qDebug() << "Parser: Could not open file: " << filename;
+// static
+QList<QString> Parser::parseAllLocations(const QString& playlistFile) {
+    if (ParserM3u::isPlaylistFilenameSupported(playlistFile)) {
+        return ParserM3u::parseAllLocations(playlistFile);
     }
-    //qDebug(QString("Parser: textstream starting character is: %1").arg(i));
-    file.close();
-    return false;
+
+    if (ParserPls::isPlaylistFilenameSupported(playlistFile)) {
+        return ParserPls::parseAllLocations(playlistFile);
+    }
+
+    if (ParserCsv::isPlaylistFilenameSupported(playlistFile)) {
+        return ParserCsv::parseAllLocations(playlistFile);
+    }
+
+    return QList<QString>();
+}
+
+// static
+QList<QString> Parser::parse(const QString& playlistFile) {
+    const QList<QString> allLocations = parseAllLocations(playlistFile);
+
+    QFileInfo fileInfo(playlistFile);
+
+    QList<QString> existingLocations;
+    for (const auto& location : allLocations) {
+        mixxx::FileInfo trackFile = Parser::playlistEntryToFileInfo(
+                location, fileInfo.canonicalPath());
+        if (trackFile.checkFileExists()) {
+            existingLocations.append(trackFile.location());
+        } else {
+            qInfo() << "File" << trackFile.location() << "from playlist"
+                    << playlistFile << "does not exist.";
+        }
+    }
+    return existingLocations;
 }
 
 // The following public domain code is taken from
@@ -158,4 +132,22 @@ bool Parser::isUtf8(const char* string) {
     }
 
     return true;
+}
+
+// static
+mixxx::FileInfo Parser::playlistEntryToFileInfo(
+        const QString& playlistEntry,
+        const QString& basePath) {
+    if (playlistEntry.startsWith("file:")) {
+        // URLs are always absolute
+        return mixxx::FileInfo::fromQUrl(QUrl(playlistEntry));
+    }
+    auto filePath = QString(playlistEntry).replace('\\', '/');
+    auto trackFile = mixxx::FileInfo(filePath);
+    if (basePath.isEmpty() || trackFile.isAbsolute()) {
+        return trackFile;
+    } else {
+        // Fallback: Relative to base path
+        return mixxx::FileInfo(QDir(basePath), filePath);
+    }
 }

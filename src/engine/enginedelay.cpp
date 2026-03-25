@@ -1,45 +1,37 @@
-/***************************************************************************
-                          enginedelay.cpp  -  description
-                             -------------------
-    copyright            : (C) 2002 by Tue and Ken Haste Andersen
-    email                :
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
 #include "enginedelay.h"
 
-#include "control/controlproxy.h"
 #include "control/controlpotmeter.h"
+#include "control/controlproxy.h"
+#include "engine/engine.h"
+#include "moc_enginedelay.cpp"
 #include "util/assert.h"
 #include "util/sample.h"
 
-const int kiMaxDelay = 40000; // 208 ms @ 96 kb/s
-const double kdMaxDelayPot = 200; // 200 ms
+namespace {
+constexpr double kdMaxDelayPot = 500;
+const int kiMaxDelay = static_cast<int>((kdMaxDelayPot + 8) / 1000 *
+        mixxx::audio::SampleRate::kValueMax * mixxx::kEngineChannelOutputCount);
+const QString kAppGroup = QStringLiteral("[App]");
+} // anonymous namespace
 
-EngineDelay::EngineDelay(const char* group, ConfigKey delayControl)
-        : m_iDelayPos(0),
+EngineDelay::EngineDelay(const ConfigKey& delayControl, bool bPersist)
+        : m_delayBuffer(kiMaxDelay),
+          m_iDelayPos(0),
           m_iDelay(0) {
-    m_pDelayBuffer = SampleUtil::alloc(kiMaxDelay);
-    SampleUtil::clear(m_pDelayBuffer, kiMaxDelay);
-    m_pDelayPot = new ControlPotmeter(delayControl, 0, kdMaxDelayPot, false, true, false, true);
+    m_delayBuffer.clear();
+    m_pDelayPot = new ControlPotmeter(delayControl, 0, kdMaxDelayPot, false, true, false, bPersist);
     m_pDelayPot->setDefaultValue(0);
-    connect(m_pDelayPot, SIGNAL(valueChanged(double)), this,
-            SLOT(slotDelayChanged()), Qt::DirectConnection);
+    connect(m_pDelayPot,
+            &ControlObject::valueChanged,
+            this,
+            &EngineDelay::slotDelayChanged,
+            Qt::DirectConnection);
 
-    m_pSampleRate = new ControlProxy(group, "samplerate", this);
-    m_pSampleRate->connectValueChanged(SLOT(slotDelayChanged()), Qt::DirectConnection);
+    m_pSampleRate = new ControlProxy(kAppGroup, QStringLiteral("samplerate"), this);
+    m_pSampleRate->connectValueChanged(this, &EngineDelay::slotDelayChanged, Qt::DirectConnection);
 }
 
 EngineDelay::~EngineDelay() {
-    SampleUtil::free(m_pDelayBuffer);
     delete m_pDelayPot;
 }
 
@@ -54,13 +46,17 @@ void EngineDelay::slotDelayChanged() {
     }
     if (m_iDelay <= 0) {
         // We start bypassing, so clear buffer, to avoid noise in case of re-enable delay
-        SampleUtil::clear(m_pDelayBuffer, kiMaxDelay);
+        m_delayBuffer.clear();
     }
 }
 
-
-void EngineDelay::process(CSAMPLE* pInOut, const int iBufferSize) {
+void EngineDelay::process(CSAMPLE* pInputOutput, const std::size_t bufferSize) {
     if (m_iDelay > 0) {
+        // The "+ kiMaxDelay" addition ensures positive values for the modulo calculation.
+        // From a mathematical point of view, this addition can be removed. Anyway,
+        // from the cpp point of view, the modulo operator for negative values
+        // (for example, x % y, where x is a negative value) produces negative results
+        // (but in math the result value is positive).
         int iDelaySourcePos = (m_iDelayPos + kiMaxDelay - m_iDelay) % kiMaxDelay;
 
         VERIFY_OR_DEBUG_ASSERT(iDelaySourcePos >= 0) {
@@ -70,14 +66,18 @@ void EngineDelay::process(CSAMPLE* pInOut, const int iBufferSize) {
             return;
         }
 
-        for (int i = 0; i < iBufferSize; ++i) {
+        for (std::size_t i = 0; i < bufferSize; ++i) {
             // put sample into delay buffer:
-            m_pDelayBuffer[m_iDelayPos] = pInOut[i];
+            m_delayBuffer[m_iDelayPos] = pInputOutput[i];
             m_iDelayPos = (m_iDelayPos + 1) % kiMaxDelay;
 
             // Take delayed sample from delay buffer and copy it to dest buffer:
-            pInOut[i] = m_pDelayBuffer[iDelaySourcePos];
+            pInputOutput[i] = m_delayBuffer[iDelaySourcePos];
             iDelaySourcePos = (iDelaySourcePos + 1) % kiMaxDelay;
         }
     }
+}
+
+void EngineDelay::setDelay(double newDelay) {
+    m_pDelayPot->set(newDelay);
 }

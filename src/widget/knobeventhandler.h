@@ -1,30 +1,44 @@
-#ifndef KNOBEVENTHANDLER_H
-#define KNOBEVENTHANDLER_H
+#pragma once
 
-#include <QMouseEvent>
-#include <QWheelEvent>
 #include <QCursor>
-#include <QApplication>
+#include <QMouseEvent>
+#include <QPixmap>
 #include <QPoint>
+#include <QTimer>
+#include <QWheelEvent>
 
 #include "util/math.h"
+
+// duration (ms) the cursor is blanked after a mouse wheel event
+// 800 ms is the duration the parameter value is shown in the parameter name widget
+// src/widget/weffectparameternamebase.cpp
+constexpr int wheelEventCursorTimeout = 800;
 
 template <class T>
 class KnobEventHandler {
   public:
     KnobEventHandler()
-            : m_bRightButtonPressed(false) {
+            : m_bRightButtonPressed(false),
+              m_pWheelCursorTimer(nullptr) {
+        QPixmap blankPixmap(32, 32);
+        blankPixmap.fill(Qt::transparent);
+        m_blankCursor = QCursor(blankPixmap);
     }
 
     double valueFromMouseEvent(T* pWidget, QMouseEvent* e) {
-        QPoint cur(e->globalPos());
-        QPoint diff(cur - m_startPos);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QPoint cur = e->globalPosition().toPoint();
+#else
+        QPoint cur = e->globalPos();
+#endif
+        QPoint diff = cur - m_prevPos;
+        m_prevPos = cur;
         double dist = sqrt(static_cast<double>(diff.x() * diff.x() + diff.y() * diff.y()));
         bool y_dominant = abs(diff.y()) > abs(diff.x());
 
-        // if y is dominant, then thread an increase in dy as negative (y is
+        // if y is dominant, then treat an increase in dy as negative (y is
         // pointed downward). Otherwise, if y is not dominant and x has
-        // decreased, then thread it as negative.
+        // decreased, then treat it as negative.
         if ((y_dominant && diff.y() > 0) || (!y_dominant && diff.x() < 0)) {
             dist = -dist;
         }
@@ -40,10 +54,9 @@ class KnobEventHandler {
 
     void mouseMoveEvent(T* pWidget, QMouseEvent* e) {
         if (!m_bRightButtonPressed) {
-            QCursor::setPos(m_startPos);
             double value = valueFromMouseEvent(pWidget, e);
             pWidget->setControlParameterDown(value);
-            pWidget->update();
+            pWidget->inputActivity();
         }
     }
 
@@ -54,12 +67,25 @@ class KnobEventHandler {
                 m_bRightButtonPressed = true;
                 break;
             case Qt::LeftButton:
-            case Qt::MidButton:
+            case Qt::MiddleButton:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                m_startPos = e->globalPosition().toPoint();
+#else
                 m_startPos = e->globalPos();
-                QApplication::setOverrideCursor(Qt::BlankCursor);
+#endif
+                m_prevPos = m_startPos;
+                // Somehow using Qt::BlankCursor does not work on Windows
+                // https://mixxx.org/forums/viewtopic.php?p=40298#p40298
+                pWidget->setCursor(m_blankCursor);
                 break;
             default:
                 break;
+        }
+    }
+
+    void mouseDoubleClickEvent(T* pWidget, QMouseEvent* e) {
+        if (e->button() == Qt::LeftButton) {
+            pWidget->resetControlParameter();
         }
     }
 
@@ -67,12 +93,12 @@ class KnobEventHandler {
         double value = 0.0;
         switch (e->button()) {
             case Qt::LeftButton:
-            case Qt::MidButton:
+            case Qt::MiddleButton:
                 QCursor::setPos(m_startPos);
-                QApplication::restoreOverrideCursor();
+                pWidget->unsetCursor();
                 value = valueFromMouseEvent(pWidget, e);
                 pWidget->setControlParameterUp(value);
-                pWidget->update();
+                pWidget->inputActivity();
                 break;
             case Qt::RightButton:
                 m_bRightButtonPressed = false;
@@ -80,19 +106,41 @@ class KnobEventHandler {
             default:
                 break;
         }
-        pWidget->update();
     }
 
     void wheelEvent(T* pWidget, QWheelEvent* e) {
+        // Hide/blank the cursor so the parameter value below the knob is not obscured.
+        // Restore the cursor when the timer runs out, or when the cursor leaves the widget.
+        pWidget->setCursor(m_blankCursor);
         // For legacy (MIDI) reasons this is tuned to 127.
-        double wheelDirection = e->delta() / (120.0 * 127.0);
+        double wheelDirection = e->angleDelta().y() / (120.0 * 127.0);
         double newValue = pWidget->getControlParameter() + wheelDirection;
 
         // Clamp to [0.0, 1.0]
         newValue = math_clamp(newValue, 0.0, 1.0);
 
         pWidget->setControlParameter(newValue);
-        pWidget->update();
+        pWidget->inputActivity();
+        e->accept();
+        if (!m_pWheelCursorTimer) {
+            m_pWheelCursorTimer = new QTimer(pWidget);
+            m_pWheelCursorTimer->setSingleShot(true);
+            m_pWheelCursorTimer->setInterval(wheelEventCursorTimeout);
+        }
+        m_pWheelCursorTimer->start();
+        m_pWheelCursorTimer->callOnTimeout(
+                [pWidget]() {
+                    if (pWidget) {
+                        pWidget->unsetCursor();
+                    }
+                });
+    }
+
+    void leaveEvent(T* pWidget, QEvent* e) {
+        if (m_pWheelCursorTimer && m_pWheelCursorTimer->isActive()) {
+            m_pWheelCursorTimer->stop();
+            pWidget->unsetCursor();
+        }
         e->accept();
     }
 
@@ -102,6 +150,7 @@ class KnobEventHandler {
 
     // Starting point when left mouse button is pressed
     QPoint m_startPos;
+    QPoint m_prevPos;
+    QCursor m_blankCursor;
+    QTimer* m_pWheelCursorTimer;
 };
-
-#endif /* KNOBEVENTHANDLER_H */

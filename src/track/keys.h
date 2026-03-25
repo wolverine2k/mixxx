@@ -1,17 +1,14 @@
-#ifndef KEYS_H
-#define KEYS_H
+#pragma once
 
 #include <QByteArray>
+#include <QList>
 #include <QPair>
-#include <QVector>
 
 #include "proto/keys.pb.h"
 
 #define KEY_MAP_VERSION "KeyMap-1.0"
 
-typedef QVector<QPair<mixxx::track::io::key::ChromaticKey, double> > KeyChangeList;
-
-class KeyFactory;
+typedef QList<QPair<mixxx::track::io::key::ChromaticKey, double>> KeyChangeList;
 
 class Keys final {
   public:
@@ -32,15 +29,20 @@ class Keys final {
     const QString& getSubVersion() const;
     void setSubVersion(const QString& subVersion);
 
-    bool isValid() const;
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Key calculations
-    ////////////////////////////////////////////////////////////////////////////
-
-    // Return the average key over the entire track if the key is valid.
+    // Return the average key over the entire track if analyzed by Mixxx
+    // or the Key found in the track metadata
     mixxx::track::io::key::ChromaticKey getGlobalKey() const;
+
+    // Return key text form the track metadata literally (not normalized)
     QString getGlobalKeyText() const;
+
+    // Return the detected tuning frequency in Hz (default 0 Hz).
+    // This is the reference frequency A4 that best matches the track's tuning.
+    // Stored as double to preserve cents precision.
+    double getGlobalTuningFrequencyHz() const;
+
+    // Set the tuning frequency in Hz (<0 falls back to 0 Hz).
+    void setGlobalTuningFrequencyHz(double tuningFrequencyHz);
 
   private:
     explicit Keys(const mixxx::track::io::key::KeyMap& m_keyMap);
@@ -54,4 +56,8 @@ class Keys final {
     friend class KeyFactory;
 };
 
-#endif /* KEYS_H */
+bool operator==(const Keys& lhs, const Keys& rhs);
+
+inline bool operator!=(const Keys& lhs, const Keys& rhs) {
+    return !(lhs == rhs);
+}

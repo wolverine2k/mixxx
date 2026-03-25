@@ -1,16 +1,27 @@
-#ifndef WAVEFORMRENDERERABSTRACT_H
-#define WAVEFORMRENDERERABSTRACT_H
+#pragma once
 
-#include <QDomNode>
-#include <QPaintEvent>
-#include <QPainter>
+#include <QtGlobal>
 
-#include "skin/skincontext.h"
+QT_FORWARD_DECLARE_CLASS(QDomNode)
+QT_FORWARD_DECLARE_CLASS(QPaintEvent)
+QT_FORWARD_DECLARE_CLASS(QPainter)
 
+namespace rendergraph {
+class Node;
+}
+
+class SkinContext;
 class WaveformWidgetRenderer;
 
 class WaveformRendererAbstract {
   public:
+    /// The type of cursor for which the waveform is rendered
+    ///  Play: the play cursor is the area of focus for the renderer
+    ///  Slip: the slip cursor is the area of focus for the renderer
+    enum PositionSource {
+        Play,
+        Slip
+    };
     explicit WaveformRendererAbstract(
             WaveformWidgetRenderer* waveformWidgetRenderer);
     virtual ~WaveformRendererAbstract();
@@ -21,6 +32,8 @@ class WaveformRendererAbstract {
 
     virtual void onResize() {}
     virtual void onSetTrack() {}
+    virtual void update() {
+    }
 
   protected:
     bool isDirty() const {
@@ -46,5 +59,3 @@ class WaveformRendererAbstract {
 
     friend class WaveformWidgetRenderer;
 };
-
-#endif // WAVEFORMRENDERERABSTRACT_H

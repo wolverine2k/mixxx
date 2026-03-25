@@ -1,21 +1,21 @@
-#ifndef MIXER_BASEPLAYER_H
-#define MIXER_BASEPLAYER_H
+#pragma once
 
 #include <QObject>
 #include <QString>
 
+class PlayerManager;
+
 class BasePlayer : public QObject {
     Q_OBJECT
   public:
-    BasePlayer(QObject* pParent, QString group);
-    virtual ~BasePlayer();
+    BasePlayer(PlayerManager* pParent, const QString& group);
+    ~BasePlayer() override = default;
 
-    inline const QString& getGroup() {
+    inline const QString& getGroup() const {
         return m_group;
     }
 
-  private:
+  protected:
+    PlayerManager* m_pPlayerManager;
     const QString m_group;
 };
-
-#endif /* MIXER_BASEPLAYER_H */

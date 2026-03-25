@@ -4,6 +4,7 @@
       <name>Numark NS7</name>
       <author>Anders Gunnarsson</author>
       <description>Numark NS7 controller preliminary mapping, v1.9.0 Requires script v1.9.0</description>
+      <manual>numark_ns7</manual>
    </info>
    <controller id="Numark NS7 MIDI">
       <scriptfiles>
@@ -203,7 +204,7 @@
             <status>0xB0</status>
             <midino>0x45</midino>
          </control>
-         
+
          <!-- Deck B -->
          <control>
             <group>[Channel2]</group>
@@ -397,7 +398,7 @@
             <status>0xB0</status>
             <midino>0x4D</midino>
          </control>
-         
+
          <!-- Mixer main-->
          <control>
             <group>[Master]</group>
@@ -432,7 +433,7 @@
             <status>0xB0</status>
             <midino>0x40</midino>
          </control>
-         
+
          <!-- Mixer channel 1 -->
          <control>
             <group>[Channel1]</group>
@@ -464,7 +465,7 @@
             <status>0xB0</status>
             <midino>0x08</midino>
          </control>
-         
+
          <!-- Mixer channel 2 -->
          <control>
             <group>[Channel2]</group>
@@ -542,7 +543,7 @@
 	        <minimum>0.9</minimum>
 	        <maximum>0.99</maximum>
 	      </output>
-	
+
 	<!-- Headphone Cue -->
 			<output>
 			    <group>[Channel1]</group>
@@ -560,7 +561,7 @@
 			</output>
 			<output>
 			    <group>[Master]</group>
-			    <key>VuMeter</key>
+			    <key>vu_meter</key>
 			    <status>0xB0</status>
 			    <midino>0x36</midino>
 			</output>

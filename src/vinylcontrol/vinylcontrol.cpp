@@ -1,12 +1,18 @@
 #include "vinylcontrol/vinylcontrol.h"
-#include "control/controlproxy.h"
-#include "control/controlobject.h"
 
-VinylControl::VinylControl(UserSettingsPointer pConfig, QString group)
+#include "control/controlproxy.h"
+#include "moc_vinylcontrol.cpp"
+#include "vinylcontrol/defs_vinylcontrol.h"
+
+VinylControl::VinylControl(UserSettingsPointer pConfig, const QString& group)
         : m_pConfig(pConfig),
           m_group(group),
+          m_passthroughEnabled(PollingControlProxy(m_group, QStringLiteral("passthrough"))),
+          m_scratchPositionEnabled(PollingControlProxy(
+                  m_group, QStringLiteral("scratch_position_enable"))),
           m_iLeadInTime(m_pConfig->getValueString(
-                  ConfigKey(group, "vinylcontrol_lead_in_time")).toInt()),
+                                         ConfigKey(group, "vinylcontrol_lead_in_time"))
+                          .toInt()),
           m_dVinylPosition(0.0),
           m_fTimecodeQuality(0.0f) {
     // Get Control objects
@@ -23,7 +29,7 @@ VinylControl::VinylControl(UserSettingsPointer pConfig, QString group)
     trackSampleRate = new ControlProxy(group, "track_samplerate", this);
     vinylSeek = new ControlProxy(group, "vinylcontrol_seek", this);
     m_pVCRate = new ControlProxy(group, "vinylcontrol_rate", this);
-    m_pRateSlider = new ControlProxy(group, "rate", this);
+    m_pRateRatio = new ControlProxy(group, "rate_ratio", this);
     playButton = new ControlProxy(group, "play", this);
     duration = new ControlProxy(group, "duration", this);
     mode = new ControlProxy(group, "vinylcontrol_mode", this);
@@ -32,9 +38,7 @@ VinylControl::VinylControl(UserSettingsPointer pConfig, QString group)
             group, "vinylcontrol_wantenabled", this);
     cueing = new ControlProxy(group, "vinylcontrol_cueing", this);
     scratching = new ControlProxy(group, "vinylcontrol_scratching", this);
-    m_pRateRange = new ControlProxy(group, "rateRange", this);
     vinylStatus = new ControlProxy(group, "vinylcontrol_status", this);
-    m_pRateDir = new ControlProxy(group, "rate_dir", this);
     loopEnabled = new ControlProxy(group, "loop_enabled", this);
     signalenabled = new ControlProxy(
             group, "vinylcontrol_signal_enabled", this);
@@ -42,12 +46,6 @@ VinylControl::VinylControl(UserSettingsPointer pConfig, QString group)
 
     //Enabled or not -- load from saved value in case vinyl control is restarting
     m_bIsEnabled = wantenabled->get() > 0.0;
-
-    // Load VC pre-amp gain from the config.
-    // TODO(rryan): Should probably live in VinylControlManager since it's not
-    // specific to a VC deck.
-    ControlObject::set(ConfigKey(VINYL_PREF_KEY, "gain"),
-        m_pConfig->getValueString(ConfigKey(VINYL_PREF_KEY,"gain")).toInt());
 }
 
 bool VinylControl::isEnabled() {
@@ -59,21 +57,21 @@ void VinylControl::toggleVinylControl(bool enable) {
         m_pConfig->set(ConfigKey(m_group,"vinylcontrol_enabled"), ConfigValue((int)enable));
     }
 
-    enabled->slotSet(enable);
+    enabled->set(enable);
 
     // Reset the scratch control to make sure we don't get stuck moving forwards or backwards.
     // actually that might be a good thing
     //if (!enable)
-    //    controlScratch->slotSet(0.0);
+    //    controlScratch->set(0.0);
 }
 
 VinylControl::~VinylControl() {
     bool wasEnabled = m_bIsEnabled;
-    enabled->slotSet(false);
-    vinylStatus->slotSet(VINYL_STATUS_DISABLED);
+    enabled->set(false);
+    vinylStatus->set(VINYL_STATUS_DISABLED);
     if (wasEnabled) {
         // if vinyl control is just restarting, indicate that it should
         // be enabled
-        wantenabled->slotSet(true);
+        wantenabled->set(true);
     }
 }

@@ -1,42 +1,27 @@
-#ifndef MIXXX_UTIL_ROTARY_H
-#define MIXXX_UTIL_ROTARY_H
+#pragma once
 
+#include <vector>
+
+#include "util/assert.h"
+
+// Simple moving average
 class Rotary {
+    using Buffer = std::vector<double>;
+    using index_type = Buffer::size_type;
+
   public:
-    Rotary();
-    ~Rotary();
-
-    // Start calibration measurement
-    void calibrateStart();
-    // End calibration measurement
-    double calibrateEnd();
-    // Set calibration
-    void setCalibration(double c);
-    // Get calibration
-    double getCalibration();
+    Rotary(qsizetype filterLength)
+            : m_filterHistory(filterLength, 0.0),
+              m_headIndex{0} {
+        DEBUG_ASSERT(filterLength > 0);
+    };
     // Low pass filtered rotary event
-    double filter(double dValue);
-    // Hard set event value
-    double fillBuffer(double dValue);
-    // Collect callibration data
-    void calibrate(double dValue);
-    // Set filter length
-    void setFilterLength(int i);
-    // Get filter length
-    int getFilterLength();
+    double filter(double value);
 
-  protected:
-    // Length of filter
-    int m_iFilterLength;
-    // Update position in filter
-    int m_iFilterPos;
-    // Pointer to rotary filter buffer
-    double *m_pFilter;
-    // Calibration value
-    double m_dCalibration;
-    // Last value
-    double m_dLastValue;
-    int m_iCalibrationCount;
+  private:
+    index_type nextIndex(index_type) const;
+    void append(double v);
+    double calculate() const;
+    Buffer m_filterHistory;
+    index_type m_headIndex;
 };
-
-#endif /* MIXXX_UTIL_ROTARY_H */

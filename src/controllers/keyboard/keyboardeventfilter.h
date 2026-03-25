@@ -1,14 +1,14 @@
-#ifndef CONTROLLERS_KEYBOARD_KEYBOARDEVENTFILTER_H
-#define CONTROLLERS_KEYBOARD_KEYBOARDEVENTFILTER_H
+#pragma once
 
-#include <QObject>
-#include <QEvent>
-#include <QKeyEvent>
 #include <QMultiHash>
+#include <QObject>
 
+#include "control/controlobject.h"
 #include "preferences/configobject.h"
 
 class ControlObject;
+class QEvent;
+class QKeyEvent;
 
 // This class provides handling of keyboard events.
 class KeyboardEventFilter : public QObject {
@@ -25,6 +25,14 @@ class KeyboardEventFilter : public QObject {
     void setKeyboardConfig(ConfigObject<ConfigValueKbd> *pKbdConfigObject);
     ConfigObject<ConfigValueKbd>* getKeyboardConfig();
 
+    // Returns a valid QString with modifier keys from a QKeyEvent
+    static QKeySequence getKeySeq(QKeyEvent* e);
+
+#ifndef __APPLE__
+  signals:
+    void altPressedWithoutKeys();
+#endif
+
   private:
     struct KeyDownInformation {
         KeyDownInformation(int keyId, int modifiers, ControlObject* pControl)
@@ -38,8 +46,20 @@ class KeyboardEventFilter : public QObject {
         ControlObject* pControl;
     };
 
-    // Returns a valid QString with modifier keys from a QKeyEvent
-    QKeySequence getKeySeq(QKeyEvent *e);
+#ifndef __APPLE__
+    bool m_altPressedWithoutKey;
+#endif
+
+    // Run through list of active keys to see if the pressed key is already active
+    // and is not a control that repeats when held.
+    bool shouldSkipHeldKey(int keyId) {
+        return std::any_of(
+                m_qActiveKeyList.cbegin(),
+                m_qActiveKeyList.cend(),
+                [&](const KeyDownInformation& keyDownInfo) {
+                    return keyDownInfo.keyId == keyId && !keyDownInfo.pControl->getKbdRepeatable();
+                });
+    }
     // List containing keys which is currently pressed
     QList<KeyDownInformation> m_qActiveKeyList;
     // Pointer to keyboard config object
@@ -47,5 +67,3 @@ class KeyboardEventFilter : public QObject {
     // Multi-hash of key sequence to
     QMultiHash<ConfigValueKbd, ConfigKey> m_keySequenceToControlHash;
 };
-
-#endif  // CONTROLLERS_KEYBOARD_KEYBOARDEVENTFILTER_H

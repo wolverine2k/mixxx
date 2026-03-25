@@ -1,5 +1,7 @@
 #include "library/treeitem.h"
 
+#include "util/make_const_iterator.h"
+
 /*
  * Just a word about how the TreeItem objects and TreeItemModels are used in general:
  * TreeItems are used by the TreeItemModel class to display tree
@@ -9,7 +11,7 @@
  * 1. argument represents a name shown in the sidebar view later on
  * 2. argument represents the absolute path of this tree item
  * 3. argument is a library feature object.
- *    This is necessary because in sidebar.cpp we hanlde 'activateChid' events
+ *    This is necessary because in sidebar.cpp we handle 'activateChid' events
  * 4. the parent TreeItem object
  *    The constructor does not add this TreeItem object to the parent's child list
  *
@@ -25,22 +27,15 @@
  * - *feature.cpp
  */
 
-TreeItem::TreeItem()
-    : m_pFeature(nullptr),
-      m_pParent(nullptr),
-      m_bold(false) {
-}
-
 TreeItem::TreeItem(
         LibraryFeature* pFeature,
-        const QString& label,
-        const QVariant& data)
+        QString label,
+        QVariant data)
     : m_pFeature(pFeature),
       m_pParent(nullptr),
-      m_label(label),
-      m_data(data),
+      m_label(std::move(label)),
+      m_data(std::move(data)),
       m_bold(false) {
-    DEBUG_ASSERT(m_pFeature != nullptr);
 }
 
 TreeItem::~TreeItem() {
@@ -57,46 +52,53 @@ int TreeItem::parentRow() const {
 
 TreeItem* TreeItem::child(int row) const {
     DEBUG_ASSERT(row >= 0);
-    DEBUG_ASSERT(row < m_children.size());
+    VERIFY_OR_DEBUG_ASSERT(row < m_children.size()) {
+        return nullptr;
+    }
     return m_children[row];
 }
 
-void TreeItem::appendChild(TreeItem* pChild) {
-    DEBUG_ASSERT(feature() != nullptr);
-    DEBUG_ASSERT(pChild != nullptr);
-    DEBUG_ASSERT(pChild->feature() == feature());
-    DEBUG_ASSERT(!pChild->hasParent());
-    m_children.append(pChild);
+void TreeItem::insertChild(int row, std::unique_ptr<TreeItem> pChild) {
+    DEBUG_ASSERT(pChild);
+    DEBUG_ASSERT(!pChild->m_pParent);
+    DEBUG_ASSERT(!pChild->m_pFeature ||
+            pChild->m_pFeature == m_pFeature);
+    DEBUG_ASSERT(row >= 0);
+    DEBUG_ASSERT(row <= m_children.size());
     pChild->m_pParent = this;
+    pChild->initFeatureRecursively(m_pFeature);
+    m_children.insert(row, pChild.release()); // transfer ownership
+}
+
+void TreeItem::initFeatureRecursively(LibraryFeature* pFeature) {
+    DEBUG_ASSERT(!m_pParent ||
+            m_pParent->m_pFeature == pFeature);
+    if (m_pFeature == pFeature) {
+        return;
+    }
+    DEBUG_ASSERT(!m_pFeature);
+    m_pFeature = pFeature;
+    for (auto* pChild : std::as_const(m_children)) {
+        pChild->initFeatureRecursively(pFeature);
+    }
 }
 
 TreeItem* TreeItem::appendChild(
-        const QString& label,
-        const QVariant& data) {
-    auto pNewChild = std::make_unique<TreeItem>(feature(), label, data);
-    TreeItem* pChild = pNewChild.get();
-    appendChild(pChild); // transfer ownership
-    pNewChild.release(); // release ownership (afterwards)
-    return pChild;
+        QString label,
+        QVariant data) {
+    auto pNewChild = std::make_unique<TreeItem>(
+            std::move(label),
+            std::move(data));
+    TreeItem* pRet = pNewChild.get();
+    insertChild(m_children.size(), std::move(pNewChild));
+    return pRet;
 }
 
-void TreeItem::removeChild(int row) {
-    DEBUG_ASSERT(row >= 0);
-    DEBUG_ASSERT(row < m_children.size());
-    delete m_children.takeAt(row);
-}
-
-void TreeItem::insertChildren(QList<TreeItem*>& children, int row, int count) {
-    DEBUG_ASSERT(feature() != nullptr);
-    DEBUG_ASSERT(count >= 0);
-    DEBUG_ASSERT(count <= children.size());
+void TreeItem::insertChildren(int row, std::vector<std::unique_ptr<TreeItem>>&& children) {
     DEBUG_ASSERT(row >= 0);
     DEBUG_ASSERT(row <= m_children.size());
-    for (int counter = 0; counter < count; ++counter) {
-        DEBUG_ASSERT(!children.empty());
-        TreeItem* pChild = children.front();
-        appendChild(pChild);
-        children.pop_front();
+    for (auto&& pChild : children) {
+        insertChild(row++, std::move(pChild));
     }
 }
 
@@ -105,6 +107,6 @@ void TreeItem::removeChildren(int row, int count) {
     DEBUG_ASSERT(count <= m_children.size());
     DEBUG_ASSERT(row >= 0);
     DEBUG_ASSERT(row <= (m_children.size() - count));
-    qDeleteAll(m_children.begin() + row, m_children.begin() + (row + count));
-    m_children.erase(m_children.begin() + row, m_children.begin() + (row + count));
+    qDeleteAll(m_children.constBegin() + row, m_children.constBegin() + (row + count));
+    constErase(&m_children, m_children.constBegin() + row, m_children.constBegin() + (row + count));
 }

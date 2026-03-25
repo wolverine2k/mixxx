@@ -1,22 +1,18 @@
-#ifndef WAVEFORMRENDERERENDOFTRACK_H
-#define WAVEFORMRENDERERENDOFTRACK_H
+#pragma once
 
 #include <QColor>
-#include <QTime>
-//#include <QLinearGradient>
+#include <memory>
 
-#include "skin/skincontext.h"
+#include "skin/legacy/skincontext.h"
 #include "util/class.h"
-#include "waveform/renderers/waveformrendererabstract.h"
-#include "waveform/waveformwidgetfactory.h"
 #include "util/performancetimer.h"
+#include "waveform/renderers/waveformrendererabstract.h"
 
-class ControlObject;
 class ControlProxy;
 
 class WaveformRendererEndOfTrack : public WaveformRendererAbstract {
   public:
-    static const int s_maxAlpha = 125;
+    static constexpr int s_maxAlpha = 125;
     explicit WaveformRendererEndOfTrack(
             WaveformWidgetRenderer* waveformWidgetRenderer);
     virtual ~WaveformRendererEndOfTrack();
@@ -29,16 +25,11 @@ class WaveformRendererEndOfTrack : public WaveformRendererAbstract {
   private:
     void generateBackRects();
 
-    ControlProxy* m_pEndOfTrackControl;
-    bool m_endOfTrackEnabled;
-    ControlProxy* m_pTrackSampleRate;
-    ControlProxy* m_pPlayControl;
-    ControlProxy* m_pLoopControl;
+    std::unique_ptr<ControlProxy> m_pEndOfTrackControl;
+    std::unique_ptr<ControlProxy> m_pTimeRemainingControl;
 
     QColor m_color;
     PerformanceTimer m_timer;
-    int m_remainingTimeTriggerSeconds;
-    int m_blinkingPeriodMillis;
 
     QVector<QRect> m_backRects;
     QPen m_pen;
@@ -46,5 +37,3 @@ class WaveformRendererEndOfTrack : public WaveformRendererAbstract {
 
     DISALLOW_COPY_AND_ASSIGN(WaveformRendererEndOfTrack);
 };
-
-#endif // WAVEFORMRENDERERENDOFTRACK_H

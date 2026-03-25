@@ -4,7 +4,8 @@
     <name>Vestax Typhoon Enhanced</name>
     <author>bestdani</author>
     <description>bestdani's customized controller mapping for Vestax Typhoon in Mixxx 2.0+ and script. The controller actions differ from the description on the console. Therefore it enables more controls such as hotcues, relative pitch movements, slip mode and much more. Some elements are taken from Bill Good's original mapping.</description>
-    <forums>http://mixxx.org/forums/viewtopic.php?p=14494#p14494</forums>
+    <forums>https://mixxx.discourse.group/t/vestax-typhoon-mapping-for-mixxx-2-0/12551/1#p14494</forums>
+    <manual>vestax_typhoon</manual>
   </info>
   <controller id="Vestax Typhoon">
     <scriptfiles>
@@ -474,7 +475,7 @@
       </output>
       <!--<output>
         <group>[Channel1]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x90</status>
         <midino>0x29</midino>
         <on>0x7f</on>
@@ -482,7 +483,7 @@
       </output>
       <output>
         <group>[Channel1]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x90</status>
         <midino>0x2a</midino>
         <on>0x7f</on>
@@ -490,7 +491,7 @@
       </output>
       <output>
         <group>[Channel1]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x90</status>
         <midino>0x2b</midino>
         <on>0x7f</on>
@@ -498,7 +499,7 @@
       </output>
       <output>
         <group>[Channel1]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x90</status>
         <midino>0x2c</midino>
         <on>0x7f</on>
@@ -506,7 +507,7 @@
       </output>
       <output>
         <group>[Channel1]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x90</status>
         <midino>0x2d</midino>
         <on>0x7f</on>
@@ -530,7 +531,7 @@
       </output>
       <!--<output>
         <group>[Channel2]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x91</status>
         <midino>0x29</midino>
         <on>0x7f</on>
@@ -538,7 +539,7 @@
       </output>
       <output>
         <group>[Channel2]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x91</status>
         <midino>0x2a</midino>
         <on>0x7f</on>
@@ -546,7 +547,7 @@
       </output>
       <output>
         <group>[Channel2]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x91</status>
         <midino>0x2b</midino>
         <on>0x7f</on>
@@ -554,7 +555,7 @@
       </output>
       <output>
         <group>[Channel2]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x91</status>
         <midino>0x2c</midino>
         <on>0x7f</on>
@@ -562,7 +563,7 @@
       </output>
       <output>
         <group>[Channel2]</group>
-        <key>VuMeter</key>
+        <key>vu_meter</key>
         <status>0x91</status>
         <midino>0x2d</midino>
         <on>0x7f</on>

@@ -1,8 +1,6 @@
-#ifndef ENGINEPREGAIN_H
-#define ENGINEPREGAIN_H
+#pragma once
 
 #include "engine/engineobject.h"
-#include "control/controlobject.h"
 #include "util/performancetimer.h"
 
 class ControlAudioTaperPot;
@@ -13,28 +11,28 @@ class ControlObject;
 // including user pregain adjustment, ReplayGain value, and vinyl-like
 // adjustments in volume relative to playback speed.
 class EnginePregain : public EngineObject {
+    Q_OBJECT
   public:
-    EnginePregain(QString group);
+    EnginePregain(const QString& group);
     ~EnginePregain() override;
-
-    void setSpeed(double speed);
 
     // If the user is scratching and the record reverses direction, the volume
     // will be ramped to zero and back up again to mimic a vinyl scratch.
     // If the user is not scratching and the direction is reversed
     // (e.g. reverse button is pressed), the audio will be immediately
     // reversed without a ramp to zero.
-    void setScratching(bool scratching);
+    void setSpeedAndScratching(double speed, bool scratching);
 
-    void process(CSAMPLE* pInOut, const int iBufferSize) override;
+    void process(CSAMPLE* pInOut, const std::size_t bufferSize) override;
 
     void collectFeatures(GroupFeatureState* pGroupFeatures) const override;
 
   private:
     double m_dSpeed;
     double m_dOldSpeed;
+    double m_dNonScratchSpeed;
     bool m_scratching;
-    float m_fPrevGain;
+    CSAMPLE_GAIN m_fPrevGain;
     ControlAudioTaperPot* m_pPotmeterPregain;
     ControlObject* m_pTotalGain;
     ControlObject* m_pCOReplayGain;
@@ -45,5 +43,3 @@ class EnginePregain : public EngineObject {
     bool m_bSmoothFade;
     PerformanceTimer m_timer;
 };
-
-#endif

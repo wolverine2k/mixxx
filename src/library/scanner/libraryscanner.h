@@ -1,28 +1,27 @@
-#ifndef MIXXX_LIBRARYSCANNER_H
-#define MIXXX_LIBRARYSCANNER_H
+#pragma once
 
+#include <gtest/gtest_prod.h>
+
+#include <QList>
+#include <QScopedPointer>
+#include <QSemaphore>
 #include <QThread>
 #include <QThreadPool>
-#include <QString>
-#include <QStringList>
-#include <QSemaphore>
-#include <QScopedPointer>
 
+#include "library/dao/analysisdao.h"
 #include "library/dao/cuedao.h"
-#include "library/dao/libraryhashdao.h"
 #include "library/dao/directorydao.h"
+#include "library/dao/libraryhashdao.h"
 #include "library/dao/playlistdao.h"
 #include "library/dao/trackdao.h"
-#include "library/dao/analysisdao.h"
 #include "library/scanner/scannerglobal.h"
-#include "track/track.h"
+#include "track/track_decl.h"
 #include "util/db/dbconnectionpool.h"
-
-#include <gtest/gtest.h>
 
 class ScannerTask;
 class LibraryScannerDlg;
-class TrackCollection;
+class QString;
+struct LibraryScanResultSummary;
 
 class LibraryScanner : public QThread {
     FRIEND_TEST(LibraryScannerTest, ScannerRoundtrip);
@@ -30,14 +29,16 @@ class LibraryScanner : public QThread {
   public:
     LibraryScanner(
             mixxx::DbConnectionPoolPtr pDbConnectionPool,
-            TrackCollection* pTrackCollection,
             const UserSettingsPointer& pConfig);
     ~LibraryScanner() override;
 
   public slots:
     // Call from any thread to start a scan. Does nothing if a scan is already
     // in progress.
-    void scan();
+    // The autoscan flag is used for the summary report. Receivers of scanSummary()
+    // can use this to decide whether to show the summary dialog, for example hide
+    // it for the automatic scan during startup.
+    void scan(bool autoscan = false);
 
     // Call from any thread to cancel the scan.
     void slotCancel();
@@ -45,19 +46,20 @@ class LibraryScanner : public QThread {
   signals:
     void scanStarted();
     void scanFinished();
-    void progressHashing(QString);
-    void progressLoading(QString path);
-    void progressCoverArt(QString file);
+    void scanSummary(const LibraryScanResultSummary& result);
+    void progressHashing(const QString&);
+    void progressLoading(const QString& path);
+    void progressCoverArt(const QString& file);
     void trackAdded(TrackPointer pTrack);
-    void tracksMoved(QSet<TrackId> oldTrackIds, QSet<TrackId> newTrackIds);
-    void tracksChanged(QSet<TrackId> changedTrackIds);
+    void tracksChanged(const QSet<TrackId>& changedTrackIds);
+    void tracksRelocated(const QList<RelocatedTrack>& relocatedTracks);
 
     // Emitted by scan() to invoke slotStartScan in the scanner thread's event
     // loop.
     void startScan();
 
   protected:
-    void run();
+    void run() override;
 
   public slots:
     void queueTask(ScannerTask* pTask);
@@ -69,7 +71,7 @@ class LibraryScanner : public QThread {
 
     // ScannerTask signal handlers.
     void slotDirectoryHashedAndScanned(const QString& directoryPath,
-                                   bool newDirectory, int hash);
+                                   bool newDirectory, mixxx::cache_key_t hash);
     void slotDirectoryUnchanged(const QString& directoryPath);
     void slotTrackExists(const QString& trackPath);
     void slotAddNewTrack(const QString& trackPath);
@@ -100,10 +102,6 @@ class LibraryScanner : public QThread {
 
     mixxx::DbConnectionPoolPtr m_pDbConnectionPool;
 
-    // The library trackcollection. Do not touch this from the library scanner
-    // thread.
-    TrackCollection* m_pTrackCollection;
-
     // The pool of threads used for worker tasks.
     QThreadPool m_pool;
 
@@ -125,8 +123,11 @@ class LibraryScanner : public QThread {
     // this is accessed main and LibraryScanner thread
     volatile ScannerState m_state;
 
-    QStringList m_libraryRootDirs;
-    QScopedPointer<LibraryScannerDlg> m_pProgressDlg;
-};
+    QSet<QString> m_previouslyMissingTracks;
+    int m_numRelocatedTracks;
 
-#endif // MIXXX_LIBRARYSCANNER_H
+    QList<mixxx::FileInfo> m_libraryRootDirs;
+    std::unique_ptr<LibraryScannerDlg> m_pProgressDlg;
+
+    bool m_manualScan;
+};

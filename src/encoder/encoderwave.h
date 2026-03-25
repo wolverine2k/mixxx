@@ -1,37 +1,32 @@
-/**
-* @file encoderwave.h
-* @author Josep Maria Antolín
-* @date Feb 27 2017
-* @brief wave/aiff "encoder" for mixxx
-*/
+#pragma once
 
-#ifndef ENCODERWAVE_H
-#define ENCODERWAVE_H
-
-
-#include "encoder/encoderwavesettings.h"
-#ifdef Q_OS_WIN
-//Enable unicode in libsndfile on Windows
-//(sf_open uses UTF-8 otherwise)
+#ifdef _WIN32
+// Enable unicode in libsndfile on Windows
+// (sf_open uses UTF-8 otherwise)
 #include <windows.h>
 #define ENABLE_SNDFILE_WINDOWS_PROTOTYPES 1
 #endif
 #include <sndfile.h>
 
-#include "util/types.h"
 #include "encoder/encoder.h"
-#include "track/track.h"
+#include "track/track_decl.h"
+#include "util/types.h"
 
 class EncoderCallback;
 
+// WAVE/AIFF "encoder"
 class EncoderWave : public Encoder {
   public:
-    EncoderWave(EncoderCallback* pCallback=nullptr);
-    virtual ~EncoderWave();
+    EncoderWave(EncoderCallback* pCallback = nullptr);
+    ~EncoderWave() override;
 
-    int initEncoder(int samplerate, QString errorMessage) override;
-    void encodeBuffer(const CSAMPLE *samples, const int size) override;
-    void updateMetaData(const QString& artist, const QString& title, const QString& album) override;
+    int initEncoder(mixxx::audio::SampleRate sampleRate,
+            QString* pUserErrorMessage) override;
+    void encodeBuffer(const CSAMPLE* samples, const std::size_t bufferSize) override;
+    void updateMetaData(const QString& artist,
+            const QString& title,
+            const QString& album,
+            std::chrono::seconds timecode = {}) override;
     void flush() override;
     void setEncoderSettings(const EncoderSettings& settings) override;
 
@@ -45,8 +40,6 @@ class EncoderWave : public Encoder {
 
     SNDFILE* m_pSndfile;
     SF_INFO m_sfInfo;
-
     SF_VIRTUAL_IO m_virtualIo;
+    int m_channels;
 };
-
-#endif //ENCODERWAVE_H

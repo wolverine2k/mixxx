@@ -1,9 +1,9 @@
-#ifndef MIDIBYTEDELEGATE_H
-#define MIDIBYTEDELEGATE_H
+#pragma once
 
 #include <QStyledItemDelegate>
 
 class MidiByteDelegate : public QStyledItemDelegate {
+    Q_OBJECT
   public:
     MidiByteDelegate(QObject* pParent);
     virtual ~MidiByteDelegate();
@@ -18,5 +18,3 @@ class MidiByteDelegate : public QStyledItemDelegate {
     void setModelData(QWidget* editor, QAbstractItemModel* model,
                       const QModelIndex& index) const;
 };
-
-#endif /* MIDIBYTEDELEGATE_H */

@@ -1,39 +1,33 @@
-#ifndef MIXXX_SOUNDSOURCEOGGVORBIS_H
-#define MIXXX_SOUNDSOURCEOGGVORBIS_H
+#pragma once
+
+#include <memory>
 
 #include "sources/soundsourceprovider.h"
-#include "util/memory.h"
 
 #define OV_EXCLUDE_STATIC_CALLBACKS
 #include <vorbis/vorbisfile.h>
 
-class QFile;
+QT_FORWARD_DECLARE_CLASS(QFile);
 
 namespace mixxx {
 
-class SoundSourceOggVorbis: public SoundSource {
-public:
-    explicit SoundSourceOggVorbis(const QUrl& url);
+class SoundSourceOggVorbis final : public SoundSource {
+  public:
+    explicit SoundSourceOggVorbis(const QUrl &url);
     ~SoundSourceOggVorbis() override;
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            const WritableSampleFrames& sampleFrames) override;
 
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer) override;
-    SINT readSampleFramesStereo(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer, SINT sampleBufferSize) override;
+  private:
+    OpenResult tryOpen(
+            OpenMode mode,
+            const OpenParams &params) override;
 
-private:
-    OpenResult tryOpen(const AudioSourceConfig& audioSrcCfg) override;
-
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer, SINT sampleBufferSize,
-            bool readStereoSamples);
-
-    static size_t ReadCallback(void *ptr, size_t size, size_t nmemb,
-            void *datasource);
+    static size_t ReadCallback(void *ptr, size_t size, size_t nmemb, void *datasource);
     static int SeekCallback(void *datasource, ogg_int64_t offset, int whence);
     static int CloseCallback(void *datasource);
     static long TellCallback(void *datasource);
@@ -46,17 +40,25 @@ private:
     SINT m_curFrameIndex;
 };
 
-class SoundSourceProviderOggVorbis: public SoundSourceProvider {
-public:
-    QString getName() const override;
+class SoundSourceProviderOggVorbis : public SoundSourceProvider {
+  public:
+    static const QString kDisplayName;
+    static const QStringList kSupportedFileTypes;
 
-    QStringList getSupportedFileExtensions() const override;
+    QString getDisplayName() const override {
+        return kDisplayName;
+    }
 
-    SoundSourcePointer newSoundSource(const QUrl& url) override {
+    QStringList getSupportedFileTypes() const override {
+        return kSupportedFileTypes;
+    }
+
+    SoundSourceProviderPriority getPriorityHint(
+            const QString& supportedFileType) const override;
+
+    SoundSourcePointer newSoundSource(const QUrl &url) override {
         return newSoundSourceFromUrl<SoundSourceOggVorbis>(url);
     }
 };
 
 } // namespace mixxx
-
-#endif // MIXXX_SOUNDSOURCEOGGVORBIS_H

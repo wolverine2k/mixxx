@@ -1,10 +1,9 @@
-#ifndef SOUNDDEVICENOTFOUND_H
-#define SOUNDDEVICENOTFOUND_H
+#pragma once
 
 #include <QString>
 
 #include "soundio/sounddevice.h"
-
+#include "soundio/soundmanagerconfig.h"
 
 class SoundManager;
 class EngineNetworkStream;
@@ -15,28 +14,28 @@ class EngineNetworkStream;
 
 class SoundDeviceNotFound : public SoundDevice {
   public:
-    SoundDeviceNotFound(QString internalName)
+    SoundDeviceNotFound(const QString& name)
             : SoundDevice(UserSettingsPointer(), nullptr) {
-        m_strInternalName = internalName;
-        m_strDisplayName = internalName;
+        m_deviceId.name = name;
+        m_strDisplayName = name;
     }
 
-    SoundDeviceError open(bool isClkRefDevice, int syncBuffers) override {
+    SoundDeviceStatus open(bool isClkRefDevice, int syncBuffers) override {
         Q_UNUSED(isClkRefDevice);
         Q_UNUSED(syncBuffers);
-        return SOUNDDEVICE_ERROR_ERR;
+        return SoundDeviceStatus::Error;
     };
     bool isOpen() const  override { return false; };
-    SoundDeviceError close() override {
-        return SOUNDDEVICE_ERROR_ERR;
+    SoundDeviceStatus close() override {
+        return SoundDeviceStatus::Error;
     };
-    void readProcess() override { };
-    void writeProcess() override { };
-    QString getError() const override{ return QObject::tr("Device not found"); };
+    void readProcess(SINT /*framesPerbuffer*/) override{};
+    void writeProcess(SINT /*framesPerbuffer*/) override{};
+    QString getError() const override {
+        return QObject::tr("Device not found");
+    };
 
-    unsigned int getDefaultSampleRate() const override {
-        return 44100;
+    mixxx::audio::SampleRate getDefaultSampleRate() const override {
+        return SoundManagerConfig::kMixxxDefaultSampleRate;
     }
 };
-
-#endif // SOUNDDEVICENOTFOUND_H

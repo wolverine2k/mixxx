@@ -1,14 +1,13 @@
-#ifndef RLIMIT_H
-#define RLIMIT_H
+#pragma once
 
 #ifdef __LINUX__
 
-class RLimit {
-  public:
-    static unsigned int getCurRtPrio();
-    static unsigned int getMaxRtPrio();
-    static bool isRtPrioAllowed();
-};
+namespace RLimit {
+
+unsigned int getCurRtPrio();
+unsigned int getMaxRtPrio();
+bool isRtPrioAllowed();
+
+} // namespace RLimit
 
 #endif // __LINUX__
-#endif // RLIMIT_H_

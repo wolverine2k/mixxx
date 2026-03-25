@@ -1,9 +1,3 @@
-//
-//   FFMPEG encoder class..
-//     - Supports what FFMPEG is compiled to supported
-//     - Same interface for all codecs
-//
-
 #include "encoder/encoderffmpegcore.h"
 
 #include <stdlib.h>
@@ -31,7 +25,6 @@ EncoderFfmpegCore::EncoderFfmpegCore(EncoderCallback* pCallback, CodecID codec)
 {
     m_bStreamInitialized = false;
     m_pCallback = pCallback;
-    m_pMetaData = TrackPointer(NULL);
 
     m_pEncodeFormatCtx = NULL;
     m_pEncoderAudioStream = NULL;
@@ -106,7 +99,7 @@ int EncoderFfmpegCore::getSerial() {
     return l_iSerial;
 }
 
-void EncoderFfmpegCore::encodeBuffer(const CSAMPLE *samples, const int size) {
+void EncoderFfmpegCore::encodeBuffer(const CSAMPLE* samples, const std::size_t bufferSize) {
     unsigned char *l_strBuffer = NULL;
     int l_iBufferLen = 0;
     //int l_iAudioCpyLen = m_iAudioInputFrameSize *
@@ -191,27 +184,20 @@ void EncoderFfmpegCore::encodeBuffer(const CSAMPLE *samples, const int size) {
     free(l_fNormalizedSamples);
 }
 
-// Originally called from enginebroadcast.cpp to update metadata information
-// when streaming, however, this causes pops
-//
-// Currently this method is used before init() once to save artist, title and album
-//
-void EncoderFfmpegCore::updateMetaData(const QString& artist, const QString& title, const QString& album) {
-    qDebug() << "ffmpegencodercore: UpdateMetadata: !" << artist << " - " << title <<
-             " - " << album;
-    m_strMetaDataTitle = title;
-    m_strMetaDataArtist = artist;
-    m_strMetaDataAlbum = album;
+void EncoderFfmpegCore::updateMetaData(const QString&,
+        const QString&,
+        const QString&,
+        std::chrono::seconds) {
 }
 
-int EncoderFfmpegCore::initEncoder(int samplerate, QString errorMessage) {
-
+int EncoderFfmpegCore::initEncoder(
+        mixxx::audio::SampleRate sampleRate, QString* pUserErrorMessage) {
 #ifndef avformat_alloc_output_context2
     qDebug() << "EncoderFfmpegCore::initEncoder: Old Style initialization";
     m_pEncodeFormatCtx = avformat_alloc_context();
 #endif
 
-    m_lSampleRate = samplerate;
+    m_lSampleRate = sampleRate;
     QString codecString;
 
 #if LIBAVCODEC_VERSION_INT > 3544932
@@ -458,7 +444,7 @@ int EncoderFfmpegCore::openAudio(AVCodec *codec, AVStream *stream) {
         return -1;
     }
 
-    if (l_SCodecCtx->codec->capabilities & CODEC_CAP_VARIABLE_FRAME_SIZE) {
+    if (l_SCodecCtx->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) {
         m_iAudioInputFrameSize = 10000;
     } else {
         m_iAudioInputFrameSize = l_SCodecCtx->frame_size;
@@ -534,8 +520,9 @@ AVStream *EncoderFfmpegCore::addStream(AVFormatContext *formatctx,
 
 
     // Some formats want stream headers to be separate.
-    if (formatctx->oformat->flags & AVFMT_GLOBALHEADER)
-        l_SCodecCtx->flags |= CODEC_FLAG_GLOBAL_HEADER;
+    if (formatctx->oformat->flags & AVFMT_GLOBALHEADER) {
+        l_SCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    }
 
     return l_SStream;
 }

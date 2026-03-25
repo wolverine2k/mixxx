@@ -1,31 +1,13 @@
-/***************************************************************************
-                          wdisplay.h  -  description
-                             -------------------
-    begin                : Fri Jun 21 2002
-    copyright            : (C) 2002 by Tue & Ken Haste Andersen
-    email                : haste@diku.dk
- ***************************************************************************/
+#pragma once
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
-#ifndef WDISPLAY_H
-#define WDISPLAY_H
-
-#include <QVector>
-#include <QPixmap>
-#include <QPaintEvent>
 #include <QString>
+#include <QVector>
 
-#include "widget/wwidget.h"
 #include "widget/wpixmapstore.h"
-#include "skin/skincontext.h"
+#include "widget/wwidget.h"
+
+class QDomNode;
+class SkinContext;
 
 class WDisplay : public WWidget {
    Q_OBJECT
@@ -33,7 +15,7 @@ class WDisplay : public WWidget {
     explicit WDisplay(QWidget *parent=nullptr);
     ~WDisplay() override;
 
-    void setup(const QDomNode& node, const SkinContext& context);
+    virtual void setup(const QDomNode& node, const SkinContext& context);
 
     void onConnectedControlChanged(double dParameter, double dValue) override;
 
@@ -53,7 +35,7 @@ class WDisplay : public WWidget {
             double scaleFactor);
 
     void setPixmapBackground(
-            PixmapSource source,
+            const PixmapSource& source,
             Paintable::DrawMode mode,
             double scaleFactor);
 
@@ -78,5 +60,3 @@ class WDisplay : public WWidget {
     // List of disabled pixmaps.
     QVector<PaintablePointer> m_disabledPixmaps;
 };
-
-#endif

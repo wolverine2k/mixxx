@@ -4,6 +4,7 @@
         <name>Pioneer DDJ-SB</name>
         <author>Joan Ardiaca Jové</author>
         <description>Pioneer DDJ-SB configuration for 4 decks. Use the tempo range buttons to switch decks.</description>
+        <manual>pioneer_ddj_sb</manual>
     </info>
     <controller id="PIONEER">
         <scriptfiles>
@@ -272,8 +273,8 @@
                 </options>
             </control>
             <control>
-                <group>[Master]</group>
-                <key>maximize_library</key>
+                <group>[Skin]</group>
+                <key>show_maximized_library</key>
                 <status>0x96</status>
                 <midino>0x65</midino>
                 <options>

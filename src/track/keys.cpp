@@ -1,4 +1,3 @@
-#include <QMutexLocker>
 #include <QtDebug>
 
 #include "track/keys.h"
@@ -19,7 +18,7 @@ Keys::Keys(const KeyMap& keyMap)
 QByteArray Keys::toByteArray() const {
     std::string output;
     m_keyMap.SerializeToString(&output);
-    return QByteArray(output.data(), output.length());
+    return QByteArray(output.data(), static_cast<int>(output.length()));
 }
 
 const QString& Keys::getSubVersion() const {
@@ -30,17 +29,21 @@ void Keys::setSubVersion(const QString& subVersion) {
     m_subVersion = subVersion;
 }
 
-bool Keys::isValid() const {
-    return m_keyMap.global_key() != mixxx::track::io::key::INVALID ||
-            m_keyMap.global_key_text().length() > 0;
-}
-
 ChromaticKey Keys::getGlobalKey() const {
     return m_keyMap.global_key();
 }
 
 QString Keys::getGlobalKeyText() const {
     return QString::fromStdString(m_keyMap.global_key_text());
+}
+
+double Keys::getGlobalTuningFrequencyHz() const {
+    return m_keyMap.global_tuning_frequency_hz();
+}
+
+void Keys::setGlobalTuningFrequencyHz(double tuningFrequencyHz) {
+    const double clamped = tuningFrequencyHz > 0.0 ? tuningFrequencyHz : 0.0;
+    m_keyMap.set_global_tuning_frequency_hz(clamped);
 }
 
 bool Keys::readByteArray(const QByteArray& byteArray) {
@@ -50,4 +53,10 @@ bool Keys::readByteArray(const QByteArray& byteArray) {
         return false;
     }
     return true;
+}
+
+bool operator==(const Keys& lhs, const Keys& rhs) {
+    return lhs.getSubVersion() == rhs.getSubVersion() &&
+            // TODO: Is there a more efficient way to compare protobuf types?
+            lhs.toByteArray() == rhs.toByteArray();
 }

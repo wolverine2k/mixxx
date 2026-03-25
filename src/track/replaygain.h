@@ -1,5 +1,5 @@
-#ifndef MIXXX_REPLAYGAIN_H
-#define MIXXX_REPLAYGAIN_H
+#pragma once
+#include <QtDebug>
 
 #include "util/types.h"
 
@@ -63,8 +63,9 @@ public:
 
     // Parsing and formatting of gain values according to the
     // ReplayGain 1.0/2.0 specification.
-    static double ratioFromString(QString dBGain, bool* pValid = 0);
-    static QString ratioToString(double ratio);
+    static double ratioFromString(const QString& dBGain, bool* pValid = 0);
+    static QString ratioToString(double ratio,
+            std::optional<int> precision = std::nullopt);
 
     static double normalizeRatio(double ratio);
 
@@ -82,17 +83,24 @@ public:
         m_peak = peak;
     }
     void resetPeak() {
-        m_peak = CSAMPLE_PEAK;
+        m_peak = kPeakUndefined;
     }
 
     // Parsing and formatting of peak amplitude values according to
     // the ReplayGain 1.0/2.0 specification.
-    static CSAMPLE peakFromString(QString strPeak, bool* pValid = 0);
+    static CSAMPLE peakFromString(const QString& strPeak, bool* pValid = 0);
     static QString peakToString(CSAMPLE peak);
 
     static CSAMPLE normalizePeak(CSAMPLE peak);
 
-private:
+    // Adjusts floating-point values to match their string representation
+    // in file tags to account for rounding errors.
+    void normalizeBeforeExport() {
+        m_ratio = normalizeRatio(m_ratio);
+        m_peak = normalizePeak(m_peak);
+    }
+
+  private:
     double m_ratio;
     CSAMPLE m_peak;
 };
@@ -107,9 +115,12 @@ bool operator!=(const ReplayGain& lhs, const ReplayGain& rhs) {
     return !(lhs == rhs);
 }
 
+inline
+QDebug operator<<(QDebug dbg, const ReplayGain& arg) {
+    return dbg << "ratio =" << arg.getRatio() << "/" << "peak =" << arg.getPeak();
 }
+
+} // namespace mixxx
 
 Q_DECLARE_TYPEINFO(mixxx::ReplayGain, Q_MOVABLE_TYPE);
 Q_DECLARE_METATYPE(mixxx::ReplayGain)
-
-#endif // MIXXX_REPLAYGAIN_H

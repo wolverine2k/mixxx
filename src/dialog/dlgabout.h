@@ -1,15 +1,11 @@
-#ifndef DIALOG_DLGABOUT_H
-#define DIALOG_DLGABOUT_H
+#pragma once
 
-#include <QWidget>
+#include <QDialog>
 
 #include "dialog/ui_dlgaboutdlg.h"
-#include "preferences/usersettings.h"
 
 class DlgAbout : public QDialog, public Ui::DlgAboutDlg {
     Q_OBJECT
   public:
-    DlgAbout(QWidget* parent);
+    DlgAbout();
 };
-
-#endif  // DIALOG_DLGABOUT_H

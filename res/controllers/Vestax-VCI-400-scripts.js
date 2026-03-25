@@ -37,23 +37,26 @@ VestaxVCI400.ModeEnum = {
  * Called when the MIDI device is opened for set up
  */
 VestaxVCI400.init = function (id) {
-   engine.setValue("[Master]", "num_decks", 4);
-   //Initialize controls and their default values here
-   VestaxVCI400.Decks.A.init();
-   VestaxVCI400.Decks.B.init();
-   VestaxVCI400.Decks.C.init();
-   VestaxVCI400.Decks.D.init();
+    engine.setValue("[App]", "num_decks", 4);
+    if (engine.getValue("[App]", "num_samplers") < 8) {
+        engine.setValue("[App]", "num_samplers", 8);
+    }
+    //Initialize controls and their default values here
+    VestaxVCI400.Decks.A.init();
+    VestaxVCI400.Decks.B.init();
+    VestaxVCI400.Decks.C.init();
+    VestaxVCI400.Decks.D.init();
 
-   //Connect vu meters
-   // No need if using the sound card
-   engine.connectControl("[Master]","VuMeterL", "VestaxVCI400.onMasterVuMeterLChanged");
-   engine.connectControl("[Master]","VuMeterR", "VestaxVCI400.onMasterVuMeterRChanged");
+    //Connect vu meters
+    // No need if using the sound card
+    engine.connectControl("[Main]", "vu_meter_left", "VestaxVCI400.onMasterVuMeterLChanged");
+    engine.connectControl("[Main]", "vu_meter_right", "VestaxVCI400.onMasterVuMeterRChanged");
 
-   //Reset VU meters
-   if (VestaxVCI400.enableMasterVu) {
-       midi.sendShortMsg("0xbe", 43, 0);
-       midi.sendShortMsg("0xbe", 44, 0);
-   }
+    //Reset VU meters
+    if (VestaxVCI400.enableMasterVu) {
+        midi.sendShortMsg("0xbe", 43, 0);
+        midi.sendShortMsg("0xbe", 44, 0);
+    }
 };
 
 /*
@@ -143,7 +146,7 @@ VestaxVCI400.Button.prototype.handleEvent = function(value) {
    this.handler(value);
 };
 
-//Calling this method will illuminate the button depening on if value is true or false
+//Calling this method will illuminate the button depending on if value is true or false
 VestaxVCI400.Button.prototype.illuminate = function(value) {
    if(value ==true){
         midi.sendShortMsg(this.statusByte, this.midiNo, VestaxVCI400.ButtonLedState.on);
@@ -457,7 +460,7 @@ VestaxVCI400.Deck.prototype.clearLights = function() {
 VestaxVCI400.Deck.prototype.init = function() {
     this.clearLights();
     //Connect controls
-    engine.connectControl(this.group,"VuMeter", "VestaxVCI400.Decks."+this.deckIdentifier+".onVuMeterChanged");
+    engine.connectControl(this.group,"vu_meter", "VestaxVCI400.Decks."+this.deckIdentifier+".onVuMeterChanged");
 
     engine.connectControl(this.group,"hotcue_1_enabled", "VestaxVCI400.Decks."+this.deckIdentifier+".onHotCue1Changed");
     engine.connectControl(this.group,"hotcue_2_enabled", "VestaxVCI400.Decks."+this.deckIdentifier+".onHotCue2Changed");
@@ -621,7 +624,7 @@ VestaxVCI400.Deck.prototype.onWheelTouch = function(value) {
             this.finishWheelTouch();
         } else {
             this.wheelTouchInertiaTimer = engine.beginTimer(
-                    inertiaTime, "VestaxVCI400.Decks." + this.deckIdentifier + ".finishWheelTouch()", true);
+                    inertiaTime, () => { VestaxVCI400.Decks[this.deckIdentifier].finishWheelTouch(); }, true);
         }
     }
 };
@@ -631,7 +634,7 @@ VestaxVCI400.Deck.prototype.finishWheelTouch = function() {
     if (this.vinylActive) {
         // Vinyl button still being pressed, don't disable scratch mode yet.
         this.wheelTouchInertiaTimer = engine.beginTimer(
-                100, "VestaxVCI400.Decks." + this.deckIdentifier + ".finishWheelTouch()", true);
+                100, () => { VestaxVCI400.Decks[this.deckIdentifier].finishWheelTouch(); }, true);
         return;
     }
     var play = engine.getValue(this.group, "play");
@@ -648,7 +651,7 @@ VestaxVCI400.Deck.prototype.finishWheelTouch = function() {
         } else {
             // Check again soon.
             this.wheelTouchInertiaTimer = engine.beginTimer(
-                    100, "VestaxVCI400.Decks." + this.deckIdentifier + ".finishWheelTouch()", true);
+                    100, () => { VestaxVCI400.Decks[this.deckIdentifier].finishWheelTouch(); }, true);
         }
     }
 };
@@ -678,17 +681,31 @@ VestaxVCI400.Deck.prototype.onWheelMove = function(value) {
     }
 };
 
-VestaxVCI400.brake = function (channel, control, value, status, group) {
-    try{
-        if (value == 0) {
-            return;
-        }
-        var deck = VestaxVCI400.GetDeck(group).deckNumber;
-        engine.brake(deck, true, .1, .9);
+// The play button usually does play/pause as normal, but if shift is held
+// we do a braking stop.
+VestaxVCI400.playButton = function (channel, control, value, status, group) {
+    if (value === 0) {
+        return;
     }
-    catch(ex) {
-        VestaxVCI400.printError(ex);
-   }
+    var playing = engine.getValue(group, "play");
+    if (playing && VestaxVCI400.shiftActive) {
+        script.brake(channel, control, value, status, group, 100.0);
+        return;
+    }
+
+    script.toggleControl(group, "play");
+};
+
+// The censor button usually does a reverse roll, but if shift is held
+// we do a backspin stop.
+VestaxVCI400.censorButton = function (channel, control, value, status, group) {
+    var playing = engine.getValue(group, "play");
+    if (playing && VestaxVCI400.shiftActive && value !== 0) {
+        script.spinback(channel, control, value, status, group, 30.0, -10.0);
+        return;
+    }
+
+    engine.setValue(group, "reverseroll", value);
 };
 
 VestaxVCI400.vinylButton = function (channel, control, value, status, group) {

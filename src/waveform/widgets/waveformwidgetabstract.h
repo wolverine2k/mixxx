@@ -1,24 +1,24 @@
-#ifndef WAVEFORMWIDGETABSTRACT_H
-#define WAVEFORMWIDGETABSTRACT_H
+#pragma once
 
-#include <QWidget>
 #include <QString>
 
-#include "waveform/renderers/waveformwidgetrenderer.h"
-#include "waveformwidgettype.h"
-#include "track/track.h"
 #include "util/duration.h"
+#include "waveform/renderers/waveformwidgetrenderer.h"
+#include "waveform/widgets/waveformwidgetcategory.h"
+#include "waveformwidgettype.h"
 
 class VSyncThread;
+class QWidget;
+class WGLWidget;
 
 // NOTE(vRince) This class represent objects the waveformwidgetfactory can
 // holds, IMPORTANT all WaveformWidgetAbstract MUST inherist QWidget too !!  we
-// can't do it here because QWidget and QGLWidget are both QWidgets so they
-// already have a common QWidget base class (ambigous polymorphism)
+// can't do it here because QWidget and WGLWidget are both QWidgets so they
+// already have a common QWidget base class (ambiguous polymorphism)
 
 class WaveformWidgetAbstract : public WaveformWidgetRenderer {
   public:
-    WaveformWidgetAbstract(const char* group);
+    WaveformWidgetAbstract(const QString& group);
     virtual ~WaveformWidgetAbstract();
 
     //Type is use by the factory to safely up-cast waveform widgets
@@ -27,12 +27,15 @@ class WaveformWidgetAbstract : public WaveformWidgetRenderer {
     bool isValid() const { return (m_widget && m_initSuccess); }
     QWidget* getWidget() { return m_widget; }
 
+    virtual WGLWidget* getGLWidget() {
+        return nullptr;
+    }
+
     void hold();
     void release();
 
     virtual void preRender(VSyncThread* vsyncThread);
     virtual mixxx::Duration render();
-
     virtual void resize(int width, int height);
 
   protected:
@@ -44,5 +47,3 @@ class WaveformWidgetAbstract : public WaveformWidgetRenderer {
 
     friend class WaveformWidgetFactory;
 };
-
-#endif // WAVEFORMWIDGETABSTRACT_H

@@ -11,14 +11,14 @@
 ////////////////////////////////////////////////////////////////////////
 
 // Issues
-// - Each deck rembembers the mode it was in, confusing? Would it be better to
+// - Each deck remembers the mode it was in, confusing? Would it be better to
 //   keep the current mode on deck switch?
 
 // Useful tinkering commands, channel reset and flat mode
 // amidi -p hw:1 -S F00001600200F7
 // amidi -p hw:1 -S F00001601000F7
 
-SCS3D = {};
+var SCS3D = {};
 
 SCS3D.init = function(id) {
     this.device = this.Device();
@@ -449,7 +449,7 @@ SCS3D.Agent = function(device) {
     // -> hello,me
     // -> hello,you
     function demux(action) {
-        return function(message, nd) {
+        return function(message, arg) {
             if (!message || message.length < 2) {
                 print("ERROR: demux over invalid message: " + message);
                 return false;
@@ -459,10 +459,10 @@ SCS3D.Agent = function(device) {
                 var i;
                 for (i in message[1]) {
                     var demuxd = [message[0], message[1][i], message[2]];
-                    changed = action(demuxd, nd) || changed;
+                    changed = action(demuxd, arg) || changed;
                 }
             } else {
-                changed = action(message, nd);
+                changed = action(message, arg);
             }
             return changed;
         };

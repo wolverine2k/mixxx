@@ -26,7 +26,7 @@ var scriptpause = 5;
  * Beatpad jog wheel is 800 intervals per revolution.
  * but the value has to be multiplied by 2 because
  * the scratch takes into account the track_samples in background
- * wich is multiplied by 2 when the track is stereo
+ * which is multiplied by 2 when the track is stereo
  ***************************/
 var intervalsPerRev = 1600,
     rpm = 33 + 1 / 3,  //Like a real vinyl !!! :)
@@ -70,15 +70,15 @@ var bendConst = 1/4; // Adjust to suit.
  * 2015-11-24 - Make some code reusable (lights : LED object; Special Buttons, iCUT)
  *            - pfl hidden bug fixed
  *            - removed line duplicate in JumpBtn : deck.controls.jump.onOff(true);
- *              (Mixxx bug was fixed : https://bugs.launchpad.net/mixxx/+bug/1504503)
+ *              (Mixxx bug was fixed : https://github.com/mixxxdj/mixxx/issues/8249)
  *            - More comment in code
  *            - Moved scratching constants with the global constants
  *            - Fixed Jog Bending and fast search
- *            - Sysex identification of the conttroller (nice print out in midiDebug). 
- *              
+ *            - Sysex identification of the controller (nice print out in midiDebug).
+ *
  * 2016-01-12 - Fixed FX effect selection on deck 2 (was selecting the entire chain instead (SHIFT+FX Select)
  *            - Fixed SHIFT+PFL on the right deck
- * 2016-01-13 - removed a few unused variables,a useless retun statement, correced typos,
+ * 2016-01-13 - removed a few unused variables, a useless return statement, corrected typos,
  *            - modified "Jogger" object
  *                  --> Autocut feature (made it more "reusable")
  *                  --> model "A" and model "B" controller parameter
@@ -158,7 +158,7 @@ var ON = 0x7F,
     // ControllerStatusSysex = [0xF0, 0x26, 0x2D, 0x65, 0x22, 0xF7],
 
     // This Sysex message asks the controller (it's very generic and works
-    // for a lot of MIDI controllers). Sending this to te controller will
+    // for a lot of MIDI controllers). Sending this to the controller will
     // be followed by a Sysex sent by the controllers giving some
     // values that permits to identify it (have a look far at the end
     // of this mapping script
@@ -268,7 +268,7 @@ ReloopBeatpad.MIDI = {
     // Jog modes
     Vinyl: 0x45,
     iScratch: 0x46,
-    // Pitch+FX switchs
+    // Pitch+FX switches
     Loop: 0x44,
     Loop_size_push: 0x43,
     FX_ON: 0x47,
@@ -381,7 +381,6 @@ LED.prototype.onOff = function(value) {
 //           if not set, it considers it as a switch off (default=false)
 // valueoff : like "value". That permits for instance with two colors (once red(on), once blue(off), once red(on), etc...)
 LED.prototype.flashOn = function(num_ms_on, value, num_ms_off, flashCount, relight, valueoff) {
-    var myself = this;
 
     // stop pending timers
     this.flashOff();
@@ -406,14 +405,14 @@ LED.prototype.flashOn = function(num_ms_on, value, num_ms_off, flashCount, relig
         // so we don't need this part  if flashcount=1
         // permanent timer
 
-        this.flashTimer = engine.beginTimer( num_ms_on + num_ms_off, function(){ myself.flashOnceOn(false); } );
+        this.flashTimer = engine.beginTimer( num_ms_on + num_ms_off, () => { this.flashOnceOn(false); } );
     }
     if (flashCount > 1) {
         // flashcount>0 , means temporary flash, first flash already done,
         // so we don't need this part  if flashcount=1
         // temporary timer. The end of this timer stops the permanent flashing
 
-        this.flashTimer2 = engine.beginTimer(flashCount * (num_ms_on + num_ms_off) - num_ms_off, function(){ myself.Stopflash(relight); }, true);
+        this.flashTimer2 = engine.beginTimer(flashCount * (num_ms_on + num_ms_off) - num_ms_off, () =>  { this.Stopflash(relight); }, true);
     }
 };
 
@@ -423,7 +422,7 @@ LED.prototype.getFlashDuration = function() {
 };
 
 LED.prototype.checkOn = function() {
-        return this.lit;
+    return this.lit;
 };
 
 // private : relight=true : restore light state before it was flashing
@@ -464,11 +463,10 @@ LED.prototype.Stopflash = function(relight) {
 
 // private : call back function (called in flashon() )
 LED.prototype.flashOnceOn = function(relight) {
-    var myself = this;
     midi.sendShortMsg(this.control, this.midino, this.valueon);
     pauseScript(scriptpause);
     this.flashOnceDuration = this.num_ms_on;
-    this.flashOnceTimer = engine.beginTimer(this.num_ms_on - scriptpause, function(){ myself.flashOnceOff(relight); }, true);
+    this.flashOnceTimer = engine.beginTimer(this.num_ms_on - scriptpause, () => { this.flashOnceOff(relight); }, true);
 };
 
 // private :call back function (called in flashOnceOn() )
@@ -497,9 +495,9 @@ LED.prototype.flashOnceOff = function(relight) {
 //                      press the button a second time (Value will be
 //                      equal to DOWN), or the Long press is asserted
 //                      (value = DOWN because you are still holding down
-//                      the button or value=UP because you have realeased
+//                      the button or value=UP because you have released
 //                      the button only once before it becomes a long press).
-// DoublePressTimeOut : delay in ms above wich a second press on the
+// DoublePressTimeOut : delay in ms above which a second press on the
 //                      button will not be considered as a potential double
 //                      but as a new press cycle event (default = 400ms).
 var SingleDoubleBtn = function(Callback, DoublePressTimeOut) {
@@ -521,7 +519,6 @@ var SingleDoubleBtn = function(Callback, DoublePressTimeOut) {
 
 // Button pressed
 SingleDoubleBtn.prototype.ButtonDown = function(channel, control, value, status, group) {
-    var myself = this;
     this.channel = channel;
     this.control = control;
     this.value = value;
@@ -530,8 +527,7 @@ SingleDoubleBtn.prototype.ButtonDown = function(channel, control, value, status,
     if (this.ButtonTimer === 0) { // first press
 
         this.ButtonTimer =
-            engine.beginTimer(this.DoublePressTimeOut,
-                              function(){ myself.ButtonDecide(); }, true);
+            engine.beginTimer(this.DoublePressTimeOut, this.ButtonDecide.bind(this), true);
         this.ButtonCount = 1;
     } else { // 2nd press (before timer's out)
         engine.stopTimer(this.ButtonTimer);
@@ -554,7 +550,7 @@ SingleDoubleBtn.prototype.ButtonDecide = function() {
 //                      and the kind of press event affecting your button (eventkind)
 //                      This callback will be called once you release the button
 //                      (Value will be equal to UP). You must provide this parameter.
-// LongPressThreshold : delay in ms above which a firts press on the
+// LongPressThreshold : delay in ms above which a first press on the
 //                      button will be considered as a Long press (default = 500ms).
 //                      This parameter is optional.
 // CallBackOKLongPress : This callback will give you the same values than the first one
@@ -597,14 +593,13 @@ LongShortBtn.prototype.ButtonAssertLongPress = function() {
 };
 
 LongShortBtn.prototype.ButtonDown = function(channel, control, value, status, group) {
-    var myself = this;
     this.channel = channel;
     this.control = control;
     this.value = value;
     this.status = status;
     this.group = group;
     this.ButtonLongPress = false;
-    this.ButtonLongPressTimer = engine.beginTimer(this.LongPressThreshold, function(){ myself.ButtonAssertLongPress(); }, true);
+    this.ButtonLongPressTimer = engine.beginTimer(this.LongPressThreshold, this.ButtonAssertLongPress.bind(this), true);
 };
 
 LongShortBtn.prototype.ButtonUp = function() {
@@ -629,11 +624,11 @@ LongShortBtn.prototype.ButtonUp = function() {
 //                      press the button a second time (Value will be
 //                      equal to DOWN), or the Long press is asserted
 //                      (value = DOWN because you are still holding down
-//                      the button or value=UP because you have realeased
+//                      the button or value=UP because you have released
 //                      the button only once before it becomes a long press).
-// LongPressThreshold : delay in ms above which a firts press on the
+// LongPressThreshold : delay in ms above which a first press on the
 //                      button will be considered as a Long press (default = 500ms).
-// DoublePressTimeOut : delay in ms above wich a second press on the
+// DoublePressTimeOut : delay in ms above which a second press on the
 //                      button will not be considered as a potential double
 //                      but as a new press cycle event (default = 400ms).
 var LongShortDoubleBtn = function(Callback, LongPressThreshold, DoublePressTimeOut) {
@@ -689,7 +684,6 @@ LongShortDoubleBtn.prototype.ButtonAssert1Press = function() {
 
 // Button pressed (function called by mapper's code)
 LongShortDoubleBtn.prototype.ButtonDown = function(channel, control, value, status, group) {
-    var myself = this;
     this.channel = channel;
     this.control = control;
     this.value = value;
@@ -702,13 +696,10 @@ LongShortDoubleBtn.prototype.ButtonDown = function(channel, control, value, stat
         // and short press
         this.ButtonLongPress = false;
         this.ButtonLongPressTimer =
-            engine.beginTimer(this.LongPressThreshold,
-                              function(){ myself.ButtonAssertLongPress(); },
+            engine.beginTimer(this.LongPressThreshold, this.ButtonAssertLongPress.bind(this),
                               true);
         this.ButtonTimer =
-            engine.beginTimer(this.DoublePressTimeOut,
-                              function(){ myself.ButtonAssert1Press(); },
-                              true);
+            engine.beginTimer(this.DoublePressTimeOut, this.ButtonAssert1Press.bind(this), true);
     } else if (this.ButtonCount == 1) { // 2nd press (before short timer's out)
         // stop timers...
         if (this.ButtonLongPressTimer !== 0) {
@@ -729,7 +720,7 @@ LongShortDoubleBtn.prototype.ButtonDown = function(channel, control, value, stat
         // 2nd press
         this.ButtonCount = 2;
 
-        // ...and take action immediatly
+        // ...and take action immediately
         this.ButtonDecide();
     } // else :
         // 2nd press after short timer's out, this cannot happen,
@@ -791,7 +782,7 @@ LongShortDoubleBtn.prototype.ButtonDecide = function() {
 //      the crossfader closes, when the jog wheel is turned forward the crossfader
 //      will open."
 // In Practice : DJAY software is closing/opening the crossfader
-//      quicly without taking into account the direction of the whheel.
+//      quickly without taking into account the direction of the wheel.
 //      Here I am trying to stick with the reloop explanation :
 //      it is the "as it is supposed to be done"
 var AutoCut = function (deckNum) {
@@ -852,7 +843,6 @@ var Jogger = function (group, deckNum, model) {
 };
 
 Jogger.prototype.finishWheelTouch = function() {
-    var myself = this;
     this.wheelTouchInertiaTimer = 0;
     var play = engine.getValue(this.group, "play");
     if (play !== 0) {
@@ -872,15 +862,12 @@ Jogger.prototype.finishWheelTouch = function() {
         } else {
             // Check again soon.
             this.wheelTouchInertiaTimer =
-                engine.beginTimer(100,
-                                function(){ myself.finishWheelTouch(); },
-                                true);
+                engine.beginTimer(100, this.finishWheelTouch.bind(this), true);
         }
     }
 };
 
 Jogger.prototype.onWheelTouch = function(value,Do_iCut) {
-    var myself = this;
     if (Do_iCut) {
         this.iCUT.On();
     } else {
@@ -906,9 +893,7 @@ Jogger.prototype.onWheelTouch = function(value,Do_iCut) {
             this.finishWheelTouch();
         } else { // If button up
             this.wheelTouchInertiaTimer =
-                engine.beginTimer(inertiaTime,
-                                function(){ myself.finishWheelTouch(); },
-                                true);
+                engine.beginTimer(inertiaTime, this.finishWheelTouch.bind(this), true);
         }
     }
 };
@@ -952,19 +937,19 @@ Jogger.prototype.onWheelMove = function(value, Do_iCut) {
 // ******************************************************************
 // RGB Jog Leds management
 // *********
-// Some explanation about this part wich control the lights (colors, flashing effect, and so forth)
+// Some explanation about this part which control the lights (colors, flashing effect, and so forth)
 // of the jog wheels. It is based on the generic LED object code above.
 // It is a layered structure like layers in paint programs.
 // The lowest level (0) is the background and the highest is the foreground (show 6)
 // Each of the layer permits to act like a mask for the lower ones.
-// Each show corresponds to a light show to indicate wether you apply an effect, the lp/hp filter , loops, etc
+// Each show corresponds to a light show to indicate whether you apply an effect, the lp/hp filter , loops, etc
 // The jogwheel has 4 RGB leds , so there is 4 slots for each show.
 // let's that we have toggle an Effect of the effect rack (show 1), the jog wheel
 // will illuminate magenta, yellow, cyan or green depending of the effect.
-// If above that we turn the lp/hp filter button to the right (High passs),
+// If above that we turn the lp/hp filter button to the right (High pass),
 // the right part will illuminate white (show 2), leaving the left part with the color of the effect.
 // The left part of (slots 1 and 2), set to "null", will be considered as being transparent for the layer show n°2,
-// leaving the correponding slots below (show1) in order to be displayed.
+// leaving the corresponding slots below (show1) in order to be displayed.
 // Shows 5 and 6 are reserved for temporary blinking : blinking off can be transparent or full black
 // This technique prevents throwing too many messages to the controller to lit on or off the leds.
 ReloopBeatpad.rgbLEDs = function(control, deckID) {
@@ -1091,7 +1076,6 @@ ReloopBeatpad.rgbLEDs.prototype.onOff = function(showname, value) {
 
 // public : make a rgb light flashing
 ReloopBeatpad.rgbLEDs.prototype.flashOn = function(num_ms_on, RGBColor, num_ms_off, flashCount) {
-    var myself = this;
     this.setshow("show6", RGBColor);
 
     // stop pending timers
@@ -1111,14 +1095,14 @@ ReloopBeatpad.rgbLEDs.prototype.flashOn = function(num_ms_on, RGBColor, num_ms_o
         // so we don't need this part  if flashcount=1
         // permanent timer
         this.flashTimer = engine.beginTimer( num_ms_on + num_ms_off,
-                                    function(){ myself.flashOnceOn(true); } );
+                                    () => { this.flashOnceOn(true); });
     }
     if (flashCount > 1) {
         // flashcount>0 , means temporary flash, first flash already done,
         // so we don't need this part  if flashcount=1
         // temporary timer. The end of this timer stops the permanent flashing
 
-        this.flashTimer2 = engine.beginTimer(flashCount * (num_ms_on + num_ms_off) - num_ms_off, function(){ myself.Stopflash(); }, true);
+        this.flashTimer2 = engine.beginTimer(flashCount * (num_ms_on + num_ms_off) - num_ms_off, this.Stopflash.bind(this), true);
     }
 };
 
@@ -1161,11 +1145,10 @@ ReloopBeatpad.rgbLEDs.prototype.getFlashDuration = function() {
 
 // private : call back function (called in flashon() )
 ReloopBeatpad.rgbLEDs.prototype.flashOnceOn = function(relight) {
-    var myself = this;
     this.layers.show5.activate = true;
     var pausecount = this.activateshow("show6", true);
     this.flashOnceDuration = this.num_ms_on;
-    this.flashOnceTimer = engine.beginTimer(this.flashDuration - scriptpause * pausecount,  function(){ myself.flashOnceOff(relight); }, true);
+    this.flashOnceTimer = engine.beginTimer(this.flashDuration - scriptpause * pausecount,  () => { this.flashOnceOff(relight); }, true);
 };
 
 // private :call back function (called in flashOnceOn() )
@@ -1251,7 +1234,7 @@ ReloopBeatpad.rgbLEDs.prototype.loops = function(value) {
     ReloopBeatpad.decks[this.deckID].leds.RimBlue.onOff((activate) ? 0x7F : 0);
 };
 
-// Ligth show n°4 to indicate when a deck is not loaded with a track
+// Light show n°4 to indicate when a deck is not loaded with a track
 ReloopBeatpad.rgbLEDs.prototype.notloaded = function(value) {
     var RGBColor = (value) ? ReloopBeatpad.RGB.red : null;
     this.setshow("show4", RGBColor);
@@ -1651,15 +1634,19 @@ ReloopBeatpad.init = function(id, debug) {
     print("============================");
     TurnLEDsOff();
 
+    if (engine.getValue("[App]", "num_samplers") < 16) {
+        engine.setValue("[App]", "num_samplers", 16);
+    }
+
     ReloopBeatpad.initButtonsObjects();
     ReloopBeatpad.initobjects();
 
     // Set soft-takeover for all Sampler volumes
-    for (i = engine.getValue("[Master]", "num_samplers"); i >= 1; i--) {
+    for (i = engine.getValue("[App]", "num_samplers"); i >= 1; i--) {
         engine.softTakeover("[Sampler" + i + "]", "pregain", true);
     }
     // Set soft-takeover for all applicable Deck controls
-    for (i = engine.getValue("[Master]", "num_decks"); i >= 1; i--) {
+    for (i = engine.getValue("[App]", "num_decks"); i >= 1; i--) {
         engine.softTakeover("[Channel" + i + "]", "volume", true);
         engine.softTakeover("[Channel" + i + "]", "filterHigh", true);
         engine.softTakeover("[Channel" + i + "]", "filterMid", true);
@@ -1686,8 +1673,8 @@ ReloopBeatpad.init = function(id, debug) {
     engine.connectControl("[Channel2]", "track_samples", "ReloopBeatpad.OnTrackLoaded");
     engine.connectControl("[Channel1]", "keylock", "ReloopBeatpad.OnKeylock");
     engine.connectControl("[Channel2]", "keylock", "ReloopBeatpad.OnKeylock");
-    engine.connectControl("[Channel1]", "VuMeter", "ReloopBeatpad.OnVuMeterChange");
-    engine.connectControl("[Channel2]", "VuMeter", "ReloopBeatpad.OnVuMeterChange");
+    engine.connectControl("[Channel1]", "vu_meter", "ReloopBeatpad.OnVuMeterChange");
+    engine.connectControl("[Channel2]", "vu_meter", "ReloopBeatpad.OnVuMeterChange");
     engine.connectControl("[Channel1]", "playposition", "ReloopBeatpad.OnPlaypositionChange");
     engine.connectControl("[Channel2]", "playposition", "ReloopBeatpad.OnPlaypositionChange");
     engine.connectControl("[Channel1]", "duration", "ReloopBeatpad.OnDurationChange");
@@ -1771,8 +1758,8 @@ ReloopBeatpad.init = function(id, debug) {
     engine.trigger("[Channel2]", "sync_enabled");
     engine.trigger("[Channel1]", "keylock");
     engine.trigger("[Channel2]", "keylock");
-    engine.trigger("[Channel1]", "VuMeter");
-    engine.trigger("[Channel2]", "VuMeter");
+    engine.trigger("[Channel1]", "vu_meter");
+    engine.trigger("[Channel2]", "vu_meter");
     engine.trigger("[Channel1]", "playposition");
     engine.trigger("[Channel2]", "playposition");
     engine.trigger("[Channel1]", "bpm");
@@ -1850,7 +1837,7 @@ ReloopBeatpad.WheelSeekTouch = function(channel, control, value, status, group) 
         // Hand on the Jog wheel, fast seek activated
         deck.seekingfast = true;
     } else {
-        // Hand off the Jog wheel, desactivate fast seek
+        // Hand off the Jog wheel, deactivate fast seek
         deck.seekingfast = false;
     }
 };
@@ -2135,7 +2122,7 @@ ReloopBeatpad.FXSelectPush = function(channel, control, value, status, group) {
     var deck = ReloopBeatpad.decks["D" + group.substring(8, 9)];
     // quick button for the current fx
 
-    // desactivate previous pending effect
+    // deactivate previous pending effect
     if (value == DOWN) {
         deck.controls["FXPad" + deck.CurrentEffectRack].onOff(ON);
         deck.leds.FX_ON.onOff(ON);
@@ -2160,7 +2147,7 @@ ReloopBeatpad.FXSelectPush = function(channel, control, value, status, group) {
 ReloopBeatpad.sFXSelectPush = function(channel, control, value, status, group) {
     // quick button for Instant fx : ENABLE/DISABLE
 
-    // desactivate previous pending effect
+    // deactivate previous pending effect
     if (value == DOWN) {
         toggleValue("[QuickEffectRack1_" + group + "_Effect1]", "enabled");
     }
@@ -2177,7 +2164,7 @@ ReloopBeatpad.InstantFXPad = function(channel, control, value, status, group) {
             deck.SelectEffectRack(padindex);
         }
     } else {
-        // desactivate previous pending effect
+        // deactivate previous pending effect
         deck.controls["FXPad" + deck.CurrentEffectRack].onOff(OFF);
         if (value == DOWN) {
             deck.controls["FXPad" + padindex].onOff(ON);
@@ -2582,7 +2569,7 @@ ReloopBeatpad.OnPlaypositionChange = function(value, group, control) {
                         ledindex = Math.floor(needle) + 1;
                         deck.leds.RimRed.onOff(ledindex);
                     } else if (deck.JogSeekStatus) { // Track position
-                        // Track position/ellapsed time
+                        // Track position/elapsed time
                         ledindex = Math.round(24.0 * value);
                         if (ledindex !== 0) {
                             ledindex += 24;
@@ -2746,3 +2733,4 @@ ReloopBeatpad.InboundSysex = function(data, length) {
     // Automatically done by Mixxx :
     // midi.sendSysexMsg(ControllerStatusSysex, ControllerStatusSysex.length);
 };
+ReloopBeatpad.incomingData = ReloopBeatpad.InboundSysex;

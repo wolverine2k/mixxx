@@ -1,5 +1,4 @@
-#ifndef WAVEFORMRENDERERHSV_H
-#define WAVEFORMRENDERERHSV_H
+#pragma once
 
 #include "util/class.h"
 #include "waveformrenderersignalbase.h"
@@ -7,7 +6,7 @@
 class WaveformRendererHSV : public WaveformRendererSignalBase {
   public:
     explicit WaveformRendererHSV(
-        WaveformWidgetRenderer* waveformWidget);
+            WaveformWidgetRenderer* waveformWidget, ::WaveformRendererSignalBase::Options options);
     virtual ~WaveformRendererHSV();
 
     virtual void onSetup(const QDomNode& node);
@@ -17,5 +16,3 @@ class WaveformRendererHSV : public WaveformRendererSignalBase {
   private:
     DISALLOW_COPY_AND_ASSIGN(WaveformRendererHSV);
 };
-
-#endif // WAVEFORMRENDERERFILTEREDSIGNAL_H

@@ -1,11 +1,11 @@
-#ifndef CONTROLLERLEARNINGEVENTFILTER_H
-#define CONTROLLERLEARNINGEVENTFILTER_H
+#pragma once
 
 #include <QObject>
-#include <QEvent>
 
 #include "control/controlobject.h"
 #include "widget/controlwidgetconnection.h"
+
+class QEvent;
 
 struct ControlInfo {
     ControlInfo()
@@ -42,12 +42,9 @@ class ControllerLearningEventFilter : public QObject {
     void stopListening();
 
   signals:
-    void controlClicked(ControlObject* pControl);
+    void controlClicked(const ConfigKey& controlKey);
 
   private:
     QHash<QWidget*, ControlInfo> m_widgetControlInfo;
     bool m_bListening;
 };
-
-
-#endif /* CONTROLLERLEARNINGEVENTFILTER_H */

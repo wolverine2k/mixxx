@@ -1,110 +1,67 @@
-#ifndef VSYNCTHREAD_H
-#define VSYNCTHREAD_H
+#pragma once
 
-#include <QTime>
-#include <QThread>
-#include <QSemaphore>
 #include <QPair>
-#include <QGLWidget>
-
-#if defined(__APPLE__)
-
-#elif defined(__WINDOWS__)
-
-#else
-#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
-#ifndef QT_OPENGL_ES_2
-    #include <qx11info_x11.h>
-    #include <GL/glx.h>
-    //#include "GL/glxext.h"
-    // clean up after Xlib.h, which #defines values that conflict with QT.
-    #undef Bool
-    #undef Unsorted
-    #undef None
-    #undef Status
-#endif // QT_OPENGL_ES_2
-#endif // QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
-#endif
+#include <QSemaphore>
+#include <QThread>
+#include <mutex>
 
 #include "util/performancetimer.h"
+#include "waveform/isynctimeprovider.h"
 
-class GuiTick;
+class WGLWidget;
 
-class VSyncThread : public QThread {
+class VSyncThread : public QThread, public VSyncTimeProvider {
     Q_OBJECT
   public:
     enum VSyncMode {
-        ST_TIMER = 0,
-        ST_MESA_VBLANK_MODE_1,
-        ST_SGI_VIDEO_SYNC,
-        ST_OML_SYNC_CONTROL,
-        ST_FREE,
-        ST_COUNT // Dummy Type at last, counting possible types
+        ST_DEFAULT = 0,
+        ST_MESA_VBLANK_MODE_1_DEPRECATED, // 1
+        ST_SGI_VIDEO_SYNC_DEPRECATED,     // 2
+        ST_OML_SYNC_CONTROL_DEPRECATED,   // 3
+        ST_FREE,                          // 4
+        ST_PLL,                           // 5
+        ST_TIMER,                         // 6
+        ST_COUNT                          // Dummy Type at last, counting possible types
     };
 
-    static void swapGl(QGLWidget* glw, int index);
-
-    VSyncThread(QObject* pParent, GuiTick* pGuiTick);
+    VSyncThread(QObject* pParent, VSyncMode vSyncMode);
     ~VSyncThread();
 
-    void run();
-    void stop();
+    void run() override;
 
-    bool waitForVideoSync(QGLWidget* glw);
+    bool waitForVideoSync(WGLWidget* glw);
     int elapsed();
-    int usToNextSync();
-    void setUsSyncIntervalTime(int usSyncTimer);
-    void setVSyncType(int mode);
+    void setSyncIntervalTimeMicros(int usSyncTimer);
     int droppedFrames();
     void setSwapWait(int sw);
-    int usFromTimerToNextSync(const PerformanceTimer& timer);
+    // VSyncTimerProvider
+    std::chrono::microseconds fromTimerToNextSync(const PerformanceTimer& timer) override;
     void vsyncSlotFinished();
-    void getAvailableVSyncTypes(QList<QPair<int, QString > >* list);
-    void setupSync(QGLWidget* glw, int index);
-    void waitUntilSwap(QGLWidget* glw);
-
+    void getAvailableVSyncTypes(QList<QPair<int, QString>>* list);
+    void setupSync(WGLWidget* glw, int index);
+    void waitUntilSwap(WGLWidget* glw);
+    mixxx::Duration sinceLastSwap() const;
+    // VSyncTimerProvider
+    std::chrono::microseconds getSyncInterval() const override {
+        return std::chrono::microseconds(m_syncIntervalTimeMicros);
+    }
+    void updatePLL();
+    bool pllInitializing() const;
+    VSyncMode vsyncMode() const {
+        return m_vSyncMode;
+    }
   signals:
+    void vsyncSwapAndRender();
     void vsyncRender();
     void vsyncSwap();
-
   private:
+    void runFree();
+    void runPLL();
+    void runTimer();
+
     bool m_bDoRendering;
-    //QGLWidget *m_glw;
-
-#if defined(__APPLE__)
-
-#elif defined(__WINDOWS__)
-
-#else
-    void initGlxext(QGLWidget* glw);
-    //bool glXExtensionSupported(Display *dpy, int screen, const char *extension);
-
-    /* Currently unused, but probably part of later a hardware sync solution
-    PFNGLXGETVIDEOSYNCSGIPROC glXGetVideoSyncSGI;
-    PFNGLXWAITVIDEOSYNCSGIPROC glXWaitVideoSyncSGI;
-
-    PFNGLXSWAPINTERVALSGIPROC glXSwapIntervalSGI;
-
-    PFNGLXSWAPINTERVALEXTPROC glXSwapIntervalEXT;
-
-    PFNGLXGETSYNCVALUESOMLPROC glXGetSyncValuesOML;
-    PFNGLXGETMSCRATEOMLPROC glXGetMscRateOML;
-    PFNGLXSWAPBUFFERSMSCOMLPROC glXSwapBuffersMscOML;
-    PFNGLXWAITFORMSCOMLPROC glXWaitForMscOML;
-    PFNGLXWAITFORSBCOMLPROC  glXWaitForSbcOML;
-
-    PFNGLXSWAPINTERVALSGIPROC glXSwapIntervalMESA;
-    */
-
-    //int64_t m_target_msc;
-    //Display* m_dpy;
-    //GLXDrawable m_drawable;
-
-#endif
-
-    bool m_vSyncTypeChanged;
-    int m_usSyncIntervalTime;
-    int m_usWaitToSwap;
+    int m_syncIntervalTimeMicros;
+    int m_waitToSwapMicros;
     enum VSyncMode m_vSyncMode;
     bool m_syncOk;
     int m_droppedFrames;
@@ -113,10 +70,15 @@ class VSyncThread : public QThread {
     QSemaphore m_semaVsyncSlot;
     double m_displayFrameRate;
     int m_vSyncPerRendering;
-
-
-    GuiTick* m_pGuiTick;
+    mixxx::Duration m_sinceLastSwap;
+    // phase locked loop
+    std::mutex m_pllMutex;
+    PerformanceTimer m_pllTimer;
+    std::atomic<int> m_pllInitCnt;
+    std::atomic<bool> m_pllPendingUpdate;
+    double m_pllInitSum;
+    double m_pllInitAvg;
+    double m_pllPhaseOut;
+    double m_pllDeltaOut;
+    double m_pllLogging;
 };
-
-
-#endif // VSYNCTHREAD_H

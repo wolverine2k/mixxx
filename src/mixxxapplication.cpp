@@ -1,191 +1,255 @@
-#include <util/synthesizedmouseevents.h>
-#include <QtDebug>
-#include <QTouchEvent>
 #include "mixxxapplication.h"
 
-#include "library/crate/crateid.h"
-#include "control/controlproxy.h"
-#include "mixxx.h"
+#include <QThreadPool>
+#include <QTouchEvent>
+#include <QtDebug>
+#include <QtGlobal>
 
-// When linking Qt statically on Windows we have to Q_IMPORT_PLUGIN all the
-// plugins we link in build/depends.py.
-#ifdef QT_NODLL
+#include "audio/frame.h"
+#include "audio/types.h"
+#include "control/controlproxy.h"
+#include "library/relocatedtrack.h"
+#include "library/trackset/crate/crateid.h"
+#include "moc_mixxxapplication.cpp"
+#include "soundio/soundmanagerutil.h"
+#include "track/track.h"
+#include "track/trackref.h"
+#include "util/assert.h"
+#include "util/cache.h"
+#include "util/cmdlineargs.h"
+#include "util/color/rgbcolor.h"
+#include "util/fileinfo.h"
+#include "util/math.h"
+
+// When linking Qt statically, the Q_IMPORT_PLUGIN is needed for each linked plugin.
+// https://doc.qt.io/qt-5/plugins-howto.html#details-of-linking-static-plugins
+#ifdef QT_STATIC
 #include <QtPlugin>
-// iconengines plugins
-Q_IMPORT_PLUGIN(qsvgicon)
-// imageformats plugins
-Q_IMPORT_PLUGIN(qsvg)
-Q_IMPORT_PLUGIN(qico)
-Q_IMPORT_PLUGIN(qtga)
-// accessible plugins
-Q_IMPORT_PLUGIN(qtaccessiblewidgets)
+#if defined(Q_OS_WASM)
+Q_IMPORT_PLUGIN(QWasmIntegrationPlugin)
+#elif defined(Q_OS_WIN)
+Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+Q_IMPORT_PLUGIN(QModernWindowsStylePlugin)
+#else
+Q_IMPORT_PLUGIN(QWindowsVistaStylePlugin)
+#endif
+#elif defined(Q_OS_IOS)
+Q_IMPORT_PLUGIN(QIOSIntegrationPlugin)
+#elif defined(Q_OS_MACOS)
+Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin)
+Q_IMPORT_PLUGIN(QMacStylePlugin)
+#elif defined(Q_OS_LINUX)
+Q_IMPORT_PLUGIN(QXcbIntegrationPlugin)
+#else
+#error "Q_IMPORT_PLUGIN() for the current patform is missing"
+#endif
+#if !defined(Q_OS_WASM)
+Q_IMPORT_PLUGIN(QOffscreenIntegrationPlugin)
+Q_IMPORT_PLUGIN(QMinimalIntegrationPlugin)
 #endif
 
+Q_IMPORT_PLUGIN(QSQLiteDriverPlugin)
+#if !defined(Q_OS_IOS)
+Q_IMPORT_PLUGIN(QTlsBackendOpenSSL)
+#endif
+Q_IMPORT_PLUGIN(QSvgPlugin)
+Q_IMPORT_PLUGIN(QICOPlugin)
+Q_IMPORT_PLUGIN(QJpegPlugin)
+Q_IMPORT_PLUGIN(QGifPlugin)
+
+#endif // QT_STATIC
+
+namespace {
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+/// This class allows to change the button of a mouse event on the fly.
+/// This is required because we want to change the behaviour of Qts mouse
+/// buttony synthesizer without duplicate all the code.
+class QMouseEventEditable : public QMouseEvent {
+  public:
+    void setButton(Qt::MouseButton button) {
+        b = button;
+    }
+#if QT_VERSION <= QT_VERSION_CHECK(5, 12, 4) && defined(__APPLE__)
+    // We also use this class to modify erroneous mouseState. See
+    // MixxxApplication::notify(...) for details.
+    void setButtons(Qt::MouseButtons mouseState) {
+        this->mouseState = mouseState;
+    }
+#endif
+};
+#endif
+
+// kEventNotifyExecTimeWarningThreshold defines the threshold duration for event
+// processing warnings. If the processing time of an event exceeds this duration
+// in developer mode, a warning will be logged. This is used to identify
+// potentially slow event processing in the application, which could impact
+// performance. With a 60Hz waveform update rate, paint and swap events must be
+// processed through the event queue every 16.6ms, to ensure smooth rendering.
+// Exceeding this processing time can lead to visible delays, therefore 10ms is a
+// reasonable threshold.
+constexpr int kDefaultEventNotifyExecTimeWarningThreshold = 10;
+
+} // anonymous namespace
 
 MixxxApplication::MixxxApplication(int& argc, char** argv)
         : QApplication(argc, argv),
-          m_fakeMouseSourcePointId(0),
-          m_fakeMouseWidget(NULL),
-          m_activeTouchButton(Qt::NoButton),
-          m_pTouchShift(NULL) {
+          m_rightPressedButtons(0),
+          m_pTouchShift(nullptr),
+          m_isDeveloper(CmdlineArgs::Instance().getDeveloper()),
+          m_eventNotifyExecTimeWarningThreshold(
+                  mixxx::Duration::fromMillis(kDefaultEventNotifyExecTimeWarningThreshold)) {
     registerMetaTypes();
-}
 
-MixxxApplication::~MixxxApplication() {
+    // Increase the size of the global thread pool to at least
+    // 4 threads, even if less cores are available. These threads
+    // will be used for loading external libraries and other tasks.
+    QThreadPool::globalInstance()->setMaxThreadCount(
+            math_max(4, QThreadPool::globalInstance()->maxThreadCount()));
 }
 
 void MixxxApplication::registerMetaTypes() {
-    // Register custom data types for signal processing
-    qRegisterMetaType<TrackId>("TrackId");
-    qRegisterMetaType<QList<TrackId>>("QList<TrackId>");
-    qRegisterMetaType<QSet<TrackId>>("QSet<TrackId>");
-    qRegisterMetaType<CrateId>("CrateId");
-    qRegisterMetaType<QList<CrateId>>("QList<CrateId>");
-    qRegisterMetaType<QSet<CrateId>>("QSet<CrateId>");
-    qRegisterMetaType<TrackPointer>("TrackPointer");
+    // PCM audio types
+    qRegisterMetaType<mixxx::audio::ChannelCount>("mixxx::audio::ChannelCount");
+    qRegisterMetaType<mixxx::audio::ChannelLayout>("mixxx::audio::ChannelLayout");
+    qRegisterMetaType<mixxx::audio::OptionalChannelLayout>("mixxx::audio::OptionalChannelLayout");
+    qRegisterMetaType<mixxx::audio::SampleRate>("mixxx::audio::SampleRate");
+    qRegisterMetaType<mixxx::audio::Bitrate>("mixxx::audio::Bitrate");
+
+    // Tracks
+    qRegisterMetaType<TrackId>();
+    qRegisterMetaType<QSet<TrackId>>();
+    qRegisterMetaType<QList<TrackId>>();
+    qRegisterMetaType<TrackRef>();
+    qRegisterMetaType<QList<TrackRef>>();
+    qRegisterMetaType<QList<QPair<TrackRef, TrackRef>>>();
+    qRegisterMetaType<TrackPointer>();
+
+    // Crates
+    qRegisterMetaType<CrateId>();
+    qRegisterMetaType<QSet<CrateId>>();
+    qRegisterMetaType<QList<CrateId>>();
+
+    // Sound devices
+    qRegisterMetaType<SoundDeviceId>();
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    QMetaType::registerComparators<SoundDeviceId>();
+#endif
+
+    // Library Scanner
+    qRegisterMetaType<RelocatedTrack>();
+    qRegisterMetaType<QList<RelocatedTrack>>();
+
+    // Various custom data types
     qRegisterMetaType<mixxx::ReplayGain>("mixxx::ReplayGain");
+    qRegisterMetaType<mixxx::cache_key_t>("mixxx::cache_key_t");
     qRegisterMetaType<mixxx::Bpm>("mixxx::Bpm");
     qRegisterMetaType<mixxx::Duration>("mixxx::Duration");
+    qRegisterMetaType<mixxx::audio::FramePos>("mixxx::audio::FramePos");
+    qRegisterMetaType<std::optional<mixxx::RgbColor>>("std::optional<mixxx::RgbColor>");
+    qRegisterMetaType<mixxx::FileInfo>("mixxx::FileInfo");
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
-
-extern void qt_translateRawTouchEvent(QWidget *window,
-        QTouchEvent::DeviceType deviceType,
-        const QList<QTouchEvent::TouchPoint> &touchPoints);
-
-bool MixxxApplication::notify(QObject* target, QEvent* event) {
-    if (isMouseEventSynthesized()) {
-        if (target->isWidgetType()) {
-            QWidget* w = static_cast<QWidget*>(target);
-            if (w->testAttribute(Qt::WA_AcceptTouchEvents)) {
-                // consume and discards Synthesized Mouse events
-                // generated by the OS, to not perform the action
-                // twice
-                return true;
-            }
-        }
+void MixxxApplication::setNotifyWarningThreshold(int threshold) {
+    if (threshold > kDefaultEventNotifyExecTimeWarningThreshold) {
+        m_eventNotifyExecTimeWarningThreshold = mixxx::Duration::fromMillis(threshold);
     }
+}
 
-    switch (event->type()) {
-    case QEvent::TouchBegin:
-    case QEvent::TouchUpdate:
-    case QEvent::TouchEnd:
-    {
-        QTouchEvent* touchEvent = static_cast<QTouchEvent*>(event);
-        QList<QTouchEvent::TouchPoint> touchPoints = touchEvent->touchPoints();
-        QEvent::Type eventType = QEvent::None;
-        Qt::MouseButtons buttons = Qt::NoButton;
-        QWidget* fakeMouseWidget = NULL;
-        bool baseReturn;
-
-        //qDebug() << "&" << touchEvent->type() << target;
-
-        if (touchEvent->deviceType() !=  QTouchEvent::TouchScreen) {
-            break;
-        }
-
-        switch (event->type()) {
-        case QEvent::TouchBegin:
-            // try to deliver as touch event
-            baseReturn = QApplication::notify(target, event);
-            if (dynamic_cast<MixxxMainWindow*>(touchEvent->widget())) {
-                // the touchEvent has fallen trough to the MixxxMainWindow, because there
-                // was no touch enabled widget found.
-                // Now we resent this event and all following events for this touch point
-                // as Mouse events.
-                eventType = QEvent::MouseButtonPress;
-                if (touchIsRightButton()) {
-                    // touch is right click
-                    m_activeTouchButton = Qt::RightButton;
-                    buttons = Qt::RightButton;
-                } else {
-                    m_activeTouchButton = Qt::LeftButton;
-                    buttons = Qt::LeftButton;
-                }
-                m_fakeMouseSourcePointId = touchPoints.first().id();
-                m_fakeMouseWidget = dynamic_cast<QWidget*>(target);
-                fakeMouseWidget = m_fakeMouseWidget;
+bool MixxxApplication::notify(QObject* pTarget, QEvent* pEvent) {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    // All touch events are translated into two simultaneous events: one for
+    // the target QWidgetWindow and one for the target QWidget.
+    // A second touch becomes a mouse move without additional press and release
+    // events.
+    switch (pEvent->type()) {
+    case QEvent::MouseButtonPress: {
+        QMouseEventEditable* pMouseEvent =
+                static_cast<QMouseEventEditable*>(pEvent); // clazy:exclude=wrong-qevent-cast
+        if (pMouseEvent->source() == Qt::MouseEventSynthesizedByQt &&
+                pMouseEvent->button() == Qt::LeftButton &&
+                touchIsRightButton()) {
+            // Assert the assumption that QT synthesizes only one click at a time
+            // = two events (see above)
+            VERIFY_OR_DEBUG_ASSERT(m_rightPressedButtons < 2) {
                 break;
             }
-            return baseReturn;
-        case QEvent::TouchUpdate:
-            if (m_fakeMouseWidget) {
-                eventType = QEvent::MouseMove;
-                buttons = m_activeTouchButton;
-                fakeMouseWidget = m_fakeMouseWidget;
-                break;
-            }
-            return QApplication::notify(target, event);
-        case QEvent::TouchEnd:
-            if (m_fakeMouseWidget) {
-                eventType = QEvent::MouseButtonRelease;
-                m_fakeMouseSourcePointId = touchPoints.first().id();
-                fakeMouseWidget = m_fakeMouseWidget;
-                m_fakeMouseWidget = NULL;
-                break;
-            }
-            return QApplication::notify(target, event);
-        default:
-            return QApplication::notify(target, event);
+            pMouseEvent->setButton(Qt::RightButton);
+            m_rightPressedButtons++;
         }
-
-        for (int i = 0; i < touchPoints.count(); ++i) {
-             const QTouchEvent::TouchPoint& touchPoint = touchPoints.at(i);
-             if (touchPoint.id() == m_fakeMouseSourcePointId) {
-                 QMouseEvent mouseEvent(eventType,
-                                        fakeMouseWidget->mapFromGlobal(touchPoint.screenPos().toPoint()),
-                                        touchPoint.screenPos().toPoint(),
-                                        m_activeTouchButton, // Button that causes the event
-                                        buttons,
-                                        touchEvent->modifiers());
-
-                 //qDebug() << "#" << mouseEvent.type() << mouseEvent.button() << mouseEvent.buttons() << mouseEvent.pos() << mouseEvent.globalPos();
-
-                 //if (m_fakeMouseWidget->focusPolicy() & Qt::ClickFocus) {
-                 //    fakeMouseWidget->setFocus();
-                 //}
-                 QApplication::notify(fakeMouseWidget, &mouseEvent);
-                 return true;
-             }
+#if QT_VERSION <= QT_VERSION_CHECK(5, 12, 4) && defined(__APPLE__)
+        if (pMouseEvent->button() == Qt::RightButton && pMouseEvent->buttons() == Qt::LeftButton) {
+            // Workaround for a bug in Qt 5.12 qnsview_mouse.mm, where the wrong value is
+            // assigned to the event's mouseState for simulated rightbutton press events
+            // (using ctrl+leftbotton), which results in a missing release event for that
+            // press event.
+            //
+            // Fixed in Qt 5.12.5. See
+            // https://github.com/qt/qtbase/commit/9a47768b46f5e5eed407b70dfa9183fa1d21e242
+            pMouseEvent->setButtons(Qt::RightButton);
         }
-        //qDebug() << "return false";
-        return false;
+#endif
         break;
     }
-    case QEvent::MouseButtonRelease:
-    {
-        bool ret = QApplication::notify(target, event);
-        if (m_fakeMouseWidget) {
-            // It may happen the faked mouse event was grabbed by a non touch window.
-            // eg.: if we have started to drag by touch.
-            // In this case X11 generates a MouseButtonRelease instead of a TouchPointReleased Event.
-            // QApplication still tracks the Touch point and prevent touch to other widgets
-            // So we need to fake the Touch release event as well to clean up
-            // QApplicationPrivate::widgetForTouchPointId and QApplicationPrivate::appCurrentTouchPoints;
-            m_fakeMouseWidget = NULL; // Disable MouseButtonRelease fake
-            QList<QTouchEvent::TouchPoint> touchPoints;
-            QTouchEvent::TouchPoint tp;
-            tp.setId(m_fakeMouseSourcePointId);
-            tp.setState(Qt::TouchPointReleased);
-            touchPoints.append(tp);
-            qt_translateRawTouchEvent(NULL, QTouchEvent::TouchScreen, touchPoints);
+    case QEvent::MouseButtonRelease: {
+        QMouseEventEditable* pMouseEvent =
+                static_cast<QMouseEventEditable*>(pEvent); // clazy:exclude=wrong-qevent-cast
+        if (pMouseEvent->source() == Qt::MouseEventSynthesizedByQt &&
+                pMouseEvent->button() == Qt::LeftButton &&
+                m_rightPressedButtons > 0) {
+            pMouseEvent->setButton(Qt::RightButton);
+            m_rightPressedButtons--;
         }
-        return ret;
+        break;
     }
     default:
         break;
     }
-    // No touch event
-    bool ret = QApplication::notify(target, event);
+#endif
+
+    PerformanceTimer time;
+
+    if (m_isDeveloper) {
+        time.start();
+    }
+
+    bool ret = QApplication::notify(pTarget, pEvent);
+
+    VERIFY_OR_DEBUG_ASSERT(pTarget != nullptr) {
+        qWarning() << "Processed" << pEvent->type() << "for null pointer, this is probably a bug!";
+        return ret;
+    }
+
+    if (m_isDeveloper &&
+            time.elapsed() > m_eventNotifyExecTimeWarningThreshold) {
+        QDebug debug = qDebug();
+        debug << "Processing"
+              << pEvent->type()
+              << "for object";
+        if (pEvent->type() == QEvent::DeferredDelete ||
+                pEvent->type() == QEvent::ChildRemoved ||
+                pEvent->type() == QEvent::Timer) {
+            // pTarget can be already dangling in case of DeferredDelete
+            debug << static_cast<void*>(pTarget); // will print dangling address
+        } else {
+            debug << pTarget // will print address, class and object name
+                  << "running in thread:"
+                  << pTarget->thread()->objectName();
+        }
+        debug << "took"
+              << time.elapsed().debugMillisWithUnit();
+    }
+
     return ret;
 }
-#endif // QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 bool MixxxApplication::touchIsRightButton() {
     if (!m_pTouchShift) {
         m_pTouchShift = new ControlProxy(
                 "[Controls]", "touch_shift", this);
     }
-    return (m_pTouchShift->get() != 0.0);
+    return m_pTouchShift->toBool();
 }
+#endif

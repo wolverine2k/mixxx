@@ -23,25 +23,47 @@
           <WidgetGroup>
             <Layout>horizontal</Layout>
             <Children>
-              <Template src="skin:left_right_display_2state_button.xml">
-                <SetVariable name="TooltipId">play_start</SetVariable>
-                <SetVariable name="ObjectName">SamplerPlayButton</SetVariable>
-                <SetVariable name="MinimumSize"><Variable name="SquareButtonMinimumSize"/></SetVariable>
-                <SetVariable name="MaximumSize"><Variable name="SquareButtonMaximumSize"/></SetVariable>
-                <SetVariable name="SizePolicy"><Variable name="SquareButtonSizePolicy"/></SetVariable>
-                <SetVariable name="state_0_text"></SetVariable>
-                <SetVariable name="state_0_pressed">icon/ic_play_48px.svg</SetVariable>
-                <SetVariable name="state_0_unpressed">icon/ic_play_48px.svg</SetVariable>
-                <SetVariable name="state_1_text"></SetVariable>
-                <SetVariable name="state_1_pressed">icon/ic_play_48px.svg</SetVariable>
-                <SetVariable name="state_1_unpressed">icon/ic_play_48px.svg</SetVariable>
-                <SetVariable name="left_connection_control"><Variable name="group"/>,cue_gotoandplay</SetVariable>
-                <SetVariable name="right_connection_control"><Variable name="group"/>,cue_gotoandstop</SetVariable>
-                <SetVariable name="display_connection_control"><Variable name="group"/>,play</SetVariable>
-              </Template>
+              <CueButton>
+                <TooltipId>cue_gotoandplay_cue_default</TooltipId>
+                <ObjectName>SamplerPlayButton</ObjectName>
+                <MinimumSize><Variable name="SquareButtonMinimumSize"/></MinimumSize>
+                <MaximumSize><Variable name="SquareButtonMaximumSize"/></MaximumSize>
+                <SizePolicy><Variable name="SquareButtonSizePolicy"/></SizePolicy>
+                <NumberStates>2</NumberStates>
+                <LeftClickIsPushButton>true</LeftClickIsPushButton>
+                <RightClickIsPushButton>true</RightClickIsPushButton>
+                <Group><Variable name="group"/></Group>
+                <State>
+                  <Number>0</Number>
+                  <Pressed scalemode="STRETCH_ASPECT">icon/ic_play_48px.svg</Pressed>
+                  <Unpressed scalemode="STRETCH_ASPECT">icon/ic_play_48px.svg</Unpressed>
+                </State>
+                <State>
+                  <Number>1</Number>
+                  <Pressed scalemode="STRETCH_ASPECT">icon/ic_pause_48px.svg</Pressed>
+                  <Unpressed scalemode="STRETCH_ASPECT">icon/ic_pause_48px.svg</Unpressed>
+                </State>
+                <Connection>
+                  <ConfigKey><Variable name="group"/>,cue_gotoandplay</ConfigKey>
+                  <EmitOnPressAndRelease>true</EmitOnPressAndRelease>
+                  <ButtonState>LeftButton</ButtonState>
+                  <ConnectValueToWidget>false</ConnectValueToWidget>
+                </Connection>
+                <Connection>
+                  <ConfigKey><Variable name="group"/>,cue_default</ConfigKey>
+                  <EmitOnPressAndRelease>true</EmitOnPressAndRelease>
+                  <ButtonState>RightButton</ButtonState>
+                  <ConnectValueToWidget>false</ConnectValueToWidget>
+                </Connection>
+                <Connection>
+                  <ConfigKey><Variable name="group"/>,play</ConfigKey>
+                  <ConnectValueFromWidget>false</ConnectValueFromWidget>
+                </Connection>
+              </CueButton>
 
             </Children>
             <Connection>
+              <!-- This enables the style with the blue play button -->
               <ConfigKey><Variable name="group"/>,repeat</ConfigKey>
               <BindProperty>visible</BindProperty>
               <Transform>
@@ -55,7 +77,7 @@
             <Children>
 
               <Template src="skin:left_right_display_2state_button.xml">
-                <SetVariable name="TooltipId">play_start</SetVariable>
+                <SetVariable name="TooltipId">cue_gotoandplay_cue_default</SetVariable>
                 <SetVariable name="ObjectName">SamplerPlayButtonRepeating</SetVariable>
                 <SetVariable name="MinimumSize"><Variable name="SquareButtonMinimumSize"/></SetVariable>
                 <SetVariable name="MaximumSize"><Variable name="SquareButtonMaximumSize"/></SetVariable>
@@ -64,15 +86,16 @@
                 <SetVariable name="state_0_pressed">icon/ic_play_48px.svg</SetVariable>
                 <SetVariable name="state_0_unpressed">icon/ic_play_48px.svg</SetVariable>
                 <SetVariable name="state_1_text"></SetVariable>
-                <SetVariable name="state_1_pressed">icon/ic_play_48px.svg</SetVariable>
-                <SetVariable name="state_1_unpressed">icon/ic_play_48px.svg</SetVariable>
+                <SetVariable name="state_1_pressed">icon/ic_pause_48px.svg</SetVariable>
+                <SetVariable name="state_1_unpressed">icon/ic_pause_48px.svg</SetVariable>
                 <SetVariable name="left_connection_control"><Variable name="group"/>,cue_gotoandplay</SetVariable>
-                <SetVariable name="right_connection_control"><Variable name="group"/>,cue_gotoandstop</SetVariable>
+                <SetVariable name="right_connection_control"><Variable name="group"/>,cue_default</SetVariable>
                 <SetVariable name="display_connection_control"><Variable name="group"/>,play</SetVariable>
               </Template>
 
             </Children>
             <Connection>
+              <!-- This enables the style with the violet play button -->
               <ConfigKey><Variable name="group"/>,repeat</ConfigKey>
               <BindProperty>visible</BindProperty>
             </Connection>
@@ -81,7 +104,7 @@
           <TrackProperty>
             <TooltipId>track_title</TooltipId>
             <SizePolicy>me,min</SizePolicy>
-            <Property>title</Property>
+            <Property>titleInfo</Property>
             <Group><Variable name="group"/></Group>
             <Elide>right</Elide>
           </TrackProperty>

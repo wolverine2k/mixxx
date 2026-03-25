@@ -1,5 +1,3 @@
-#include <QtDebug>
-
 /**
 Documentation:
 OSX: https://developer.apple.com/reference/iokit/1557134-iopmassertioncreatewithname
@@ -19,17 +17,31 @@ https://github.com/awjackson/bsnes-classic/blob/038e2e051ffc8abe7c56a3bf27e3016c
 
 #include "util/screensaver.h"
 
-#if defined(Q_OS_MAC)
-#  include "util/mac.h"
-#elif defined(Q_OS_WIN)
-#  include <windows.h>
-#elif defined(Q_OS_LINUX)
-#  include <QtDBus>
-#elif HAVE_XSCREENSAVER_SUSPEND
-#  include <X11/extensions/scrnsaver.h>
-#endif // Q_OS_WIN
+#include <QDebug>
+#include <QtGlobal>
 
-#if defined(Q_OS_LINUX) || HAVE_XSCREENSAVER_SUSPEND
+#include "util/assert.h"
+
+#if defined(Q_OS_MACOS)
+#  include "util/mac.h"
+#elif defined(Q_OS_IOS)
+#include "util/screensaverios.h"
+#elif defined(Q_OS_ANDROID)
+#include <android/api-level.h>
+#include <android/log.h>
+#define HAS_XWINDOW_SCREENSAVER 0
+#elif defined(_WIN32)
+#  include <windows.h>
+#elif defined(__LINUX__)
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusReply>
+#elif defined(HAVE_XSCREENSAVER_SUSPEND) && HAVE_XSCREENSAVER_SUSPEND
+#  include <X11/extensions/scrnsaver.h>
+#endif
+
+#if (defined(__LINUX__) && defined(__X11__)) || \
+        (defined(HAVE_XSCREENSAVER_SUSPEND) && HAVE_XSCREENSAVER_SUSPEND)
 #  define None XNone
 #  define Window XWindow
 #  include <X11/Xlib.h>
@@ -56,8 +68,7 @@ void ScreenSaverHelper::uninhibit()
     }
 }
 
-
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 IOPMAssertionID ScreenSaverHelper::s_systemSleepAssertionID=0;
 IOPMAssertionID ScreenSaverHelper::s_userActivityAssertionID=0;
 
@@ -140,7 +151,7 @@ void ScreenSaverHelper::uninhibitInternal()
     s_enabled = false;
 }
 
-#elif defined(Q_OS_LINUX)
+#elif (defined(Q_OS_LINUX) && defined(__X11__))
 const char *SCREENSAVERS[][4] = {
     // org.freedesktop.ScreenSaver is the standard. should work for gnome and kde too, 
     // but I add their specific names too
@@ -169,11 +180,14 @@ void ScreenSaverHelper::triggerUserActivity()
 {
     const char* name = ":0.0";
     Display *display;
-    if (getenv("DISPLAY"))
+    if (getenv("DISPLAY")) {
         name=getenv("DISPLAY");
+    }
     display=XOpenDisplay(name);
-    XResetScreenSaver(display);
-    XCloseDisplay(display);
+    if (display != nullptr) {
+        XResetScreenSaver(display);
+        XCloseDisplay(display);
+    }
     return;
 }
 // Disabling the method with DBus since it seems to be failing on several systems.
@@ -274,7 +288,7 @@ void ScreenSaverHelper::uninhibitInternal()
     }
 }
 
-#elif HAS_XWINDOW_SCREENSAVER
+#elif defined(HAS_XWINDOW_SCREENSAVER) && HAS_XWINDOW_SCREENSAVER
 // This is untested.
 struct LibXtst : public library {
   function<int (Display*, unsigned int, Bool, unsigned long)> XTestFakeKeyEvent;
@@ -318,6 +332,71 @@ void ScreenSaverHelper::uninhibitInternal()
     s_enabled = false;
 }
 
+#elif defined(Q_OS_IOS)
+void ScreenSaverHelper::triggerUserActivity() {
+}
+void ScreenSaverHelper::inhibitInternal() {
+    setIdleTimerDisabled(true);
+    s_enabled = true;
+}
+void ScreenSaverHelper::uninhibitInternal() {
+    setIdleTimerDisabled(false);
+    s_enabled = false;
+}
+#elif defined(Q_OS_WASM)
+// Screensavers are not supported
+void ScreenSaverHelper::triggerUserActivity() {
+}
+void ScreenSaverHelper::inhibitInternal() {
+}
+void ScreenSaverHelper::uninhibitInternal() {
+}
+#elif defined(Q_OS_ANDROID)
+
+QJniObject ScreenSaverHelper::s_wakeLock = {};
+// Screensavers are not supported
+void ScreenSaverHelper::triggerUserActivity() {
+}
+void ScreenSaverHelper::inhibitInternal() {
+    if (!ScreenSaverHelper::s_wakeLock.isValid()) {
+        QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject POWER_SERVICE =
+                QJniObject::getStaticObjectField(
+                        "android/content/Context",
+                        "POWER_SERVICE",
+                        "Ljava/lang/String;");
+        auto powerService = context.callObjectMethod("getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                POWER_SERVICE.object());
+        if (!powerService.isValid()) {
+            qDebug() << "powerService invalid";
+            return;
+        }
+
+        jint FULL_WAKE_LOCK =
+                QJniObject::getStaticField<jint>(
+                        "android/os/PowerManager",
+                        "FULL_WAKE_LOCK");
+        ScreenSaverHelper::s_wakeLock =
+                powerService.callObjectMethod("newWakeLock",
+                        "(ILjava/lang/String;)Landroid/os/PowerManager$WakeLock;",
+                        FULL_WAKE_LOCK,
+                        QJniObject::fromString("Mixxx").object<jstring>());
+        if (!ScreenSaverHelper::s_wakeLock.isValid()) {
+            __android_log_print(ANDROID_LOG_WARN, "mixxx", "powerService wakeLock invalid");
+            qWarning() << "ScreenSaverHelper::inhibitInternal - wakeLock invalid";
+            return;
+        }
+    }
+    ScreenSaverHelper::s_wakeLock.callMethod<void>("acquire");
+}
+void ScreenSaverHelper::uninhibitInternal() {
+    // QNativeInterface::QAndroidApplication::runOnAndroidMainThread([]() {
+    if (ScreenSaverHelper::s_wakeLock.isValid()) {
+        ScreenSaverHelper::s_wakeLock.callMethod<void>("release");
+    }
+    // }).waitForFinished();
+}
 #else
 void ScreenSaverHelper::triggerUserActivity()
 {
@@ -325,14 +404,12 @@ void ScreenSaverHelper::triggerUserActivity()
 }
 void ScreenSaverHelper::inhibitInternal()
 {
-    DEBUG_ASSERT(!"Screensaver suspending not implemented")
+    DEBUG_ASSERT(!"Screensaver suspending not implemented");
 }
 void ScreenSaverHelper::uninhibitInternal()
 {
     DEBUG_ASSERT(!"Screensaver suspending not implemented");
 }
-#endif // Q_OS_MAC
-
+#endif // Q_OS_MACOS
 
 } // namespace mixxx
-

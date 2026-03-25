@@ -1,11 +1,13 @@
-#ifndef QUERYUTIL_H
-#define QUERYUTIL_H
+#pragma once
 
+#include <QSqlDatabase>
+#include <QSqlDriver>
+#include <QSqlError>
+#include <QSqlField>
 #include <QtDebug>
-#include <QtSql>
 
 
-#define LOG_FAILED_QUERY(query) qDebug() << __FILE__ << __LINE__ << "FAILED QUERY [" \
+#define LOG_FAILED_QUERY(query) qWarning() << __FILE__ << __LINE__ << "FAILED QUERY [" \
     << (query).executedQuery() << "]" << (query).lastError()
 
 class ScopedTransaction {
@@ -42,9 +44,14 @@ class ScopedTransaction {
             return false;
         }
         bool result = m_database.commit();
-        qDebug() << "Committing transaction on"
-                 << m_database.connectionName()
-                 << "result:" << result;
+        if (result) {
+            qDebug() << "Committing transaction successfully on"
+                     << m_database.connectionName();
+        } else {
+            qInfo() << "Committing transaction failed on"
+                    << m_database.connectionName()
+                    << ":" << m_database.lastError();
+        }
         m_active = false;
         return result;
     }
@@ -70,7 +77,13 @@ class FieldEscaper final {
   public:
     FieldEscaper(const QSqlDatabase& database)
             : m_database(database),
-              m_stringField("string", QVariant::String) {
+              m_stringField("string",
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                      QMetaType(QMetaType::QString)
+#else
+                      QVariant::String
+#endif
+              ) {
     }
 
     // Escapes a string for use in a SQL query by wrapping with quotes and
@@ -97,5 +110,3 @@ class FieldEscaper final {
     QSqlDatabase m_database;
     mutable QSqlField m_stringField;
 };
-
-#endif /* QUERYUTIL_H */

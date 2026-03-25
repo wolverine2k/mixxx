@@ -6,34 +6,37 @@
 #include "control/controlproxy.h"
 #include "track/track.h"
 #include "util/math.h"
+#include "util/painterscope.h"
 
 #include <QLineF>
 #include <QLinearGradient>
 
 QtWaveformRendererFilteredSignal::QtWaveformRendererFilteredSignal(
-        WaveformWidgetRenderer* waveformWidgetRenderer)
-    : WaveformRendererSignalBase(waveformWidgetRenderer) {
+        WaveformWidgetRenderer* waveformWidgetRenderer,
+        ::WaveformRendererSignalBase::Options options)
+        : WaveformRendererSignalBase(waveformWidgetRenderer, options) {
 }
 
 QtWaveformRendererFilteredSignal::~QtWaveformRendererFilteredSignal() {
 }
 
 void QtWaveformRendererFilteredSignal::onSetup(const QDomNode& /*node*/) {
-    QColor low = m_pColors->getLowColor();
-    QColor mid = m_pColors->getMidColor();
-    QColor high = m_pColors->getHighColor();
+    const auto* pColors = m_waveformRenderer->getWaveformSignalColors();
+    QColor low = pColors->getLowColor();
+    QColor mid = pColors->getMidColor();
+    QColor high = pColors->getHighColor();
 
     QColor lowCenter = low;
     QColor midCenter = mid;
     QColor highCenter = high;
 
-    low.setAlphaF(0.9);
-    mid.setAlphaF(0.9);
-    high.setAlphaF(0.9);
+    low.setAlphaF(0.9f);
+    mid.setAlphaF(0.9f);
+    high.setAlphaF(0.9f);
 
-    lowCenter.setAlphaF(0.5);
-    midCenter.setAlphaF(0.5);
-    highCenter.setAlphaF(0.5);
+    lowCenter.setAlphaF(0.5f);
+    midCenter.setAlphaF(0.5f);
+    highCenter.setAlphaF(0.5f);
 
     QLinearGradient gradientLow(QPointF(0.0,-255.0/2.0),QPointF(0.0,255.0/2.0));
     gradientLow.setColorAt(0.0, low);
@@ -59,9 +62,9 @@ void QtWaveformRendererFilteredSignal::onSetup(const QDomNode& /*node*/) {
     gradientHigh.setColorAt(1.0, high);
     m_highBrush = QBrush(gradientHigh);
 
-    low.setAlphaF(0.3);
-    mid.setAlphaF(0.3);
-    high.setAlphaF(0.3);
+    low.setAlphaF(0.3f);
+    mid.setAlphaF(0.3f);
+    high.setAlphaF(0.3f);
 
     QLinearGradient gradientKilledLow(QPointF(0.0,-255.0/2.0),QPointF(0.0,255.0/2.0));
     gradientKilledLow.setColorAt(0.0,low.darker(80));
@@ -96,28 +99,37 @@ inline void setPoint(QPointF& point, qreal x, qreal y) {
 int QtWaveformRendererFilteredSignal::buildPolygon() {
     // We have to check the track is present because it might have been unloaded
     // between the call to draw and the call to buildPolygon
-    TrackPointer pTrack = m_waveformRenderer->getTrackInfo();
-    if (!pTrack) {
+    ConstWaveformPointer pWaveform = m_waveformRenderer->getWaveform();
+    if (pWaveform.isNull()) {
         return 0;
     }
 
-    ConstWaveformPointer waveform = pTrack->getWaveform();
-    if (waveform.isNull()) {
+    const double audioVisualRatio = pWaveform->getAudioVisualRatio();
+    if (audioVisualRatio <= 0) {
         return 0;
     }
 
-    const int dataSize = waveform->getDataSize();
+    const int dataSize = pWaveform->getDataSize();
     if (dataSize <= 1) {
         return 0;
     }
 
-    const WaveformData* data = waveform->data();
-    if (data == NULL) {
+    const WaveformData* data = pWaveform->data();
+    if (data == nullptr) {
         return 0;
     }
 
-    const double firstVisualIndex = m_waveformRenderer->getFirstDisplayedPosition() * dataSize;
-    const double lastVisualIndex = m_waveformRenderer->getLastDisplayedPosition() * dataSize;
+    const double trackSamples = m_waveformRenderer->getTrackSamples();
+    if (trackSamples <= 0) {
+        return 0;
+    }
+
+    const double firstVisualIndex =
+            m_waveformRenderer->getFirstDisplayedPosition() * trackSamples /
+            audioVisualRatio;
+    const double lastVisualIndex =
+            m_waveformRenderer->getLastDisplayedPosition() * trackSamples /
+            audioVisualRatio;
 
     m_polygon[0].clear();
     m_polygon[1].clear();
@@ -139,13 +151,14 @@ int QtWaveformRendererFilteredSignal::buildPolygon() {
             (double)m_waveformRenderer->getLength();
 
     float lowGain(1.0), midGain(1.0), highGain(1.0);
-    getGains(NULL, &lowGain, &midGain, &highGain);
+    getGains(nullptr, &lowGain, &midGain, &highGain);
 
     //NOTE(vrince) Please help me find a better name for "channelSeparation"
     //this variable stand for merged channel ... 1 = merged & 2 = separated
     int channelSeparation = 2;
-    if (m_alignment != Qt::AlignCenter)
+    if (m_alignment != Qt::AlignCenter) {
         channelSeparation = 1;
+    }
 
     for (int channel = 0; channel < channelSeparation; ++channel) {
         int startPixel = 0;
@@ -154,8 +167,9 @@ int QtWaveformRendererFilteredSignal::buildPolygon() {
         double direction = 1.0;
 
         // Reverse display for merged bottom/left channel
-        if (m_alignment == Qt::AlignBottom || m_alignment == Qt::AlignLeft)
+        if (m_alignment == Qt::AlignBottom || m_alignment == Qt::AlignLeft) {
             direction = -1.0;
+        }
 
         if (channel == 1) {
             startPixel = m_waveformRenderer->getLength() - 1;
@@ -272,10 +286,11 @@ int QtWaveformRendererFilteredSignal::buildPolygon() {
 
 void QtWaveformRendererFilteredSignal::draw(QPainter* painter, QPaintEvent* /*event*/) {
     const TrackPointer pTrack = m_waveformRenderer->getTrackInfo();
-    if (!pTrack)
+    if (!pTrack) {
         return;
+    }
 
-    painter->save();
+    PainterScope PainterScope(painter);
 
     painter->setRenderHint(QPainter::Antialiasing);
     painter->resetTransform();
@@ -287,7 +302,7 @@ void QtWaveformRendererFilteredSignal::draw(QPainter* painter, QPaintEvent* /*ev
 
     //visual gain
     float allGain(1.0);
-    getGains(&allGain, NULL, NULL, NULL);
+    getGains(&allGain, nullptr, nullptr, nullptr);
 
     double heightGain = allGain * (double)m_waveformRenderer->getBreadth() / 255.0;
     if (m_alignment == Qt::AlignTop || m_alignment == Qt::AlignRight) {
@@ -303,7 +318,7 @@ void QtWaveformRendererFilteredSignal::draw(QPainter* painter, QPaintEvent* /*ev
 
     //draw reference line
     if (m_alignment == Qt::AlignCenter) {
-        painter->setPen(m_pColors->getAxesColor());
+        painter->setPen(m_waveformRenderer->getWaveformSignalColors()->getAxesColor());
         painter->drawLine(0, 0, m_waveformRenderer->getLength(), 0);
     }
 
@@ -335,6 +350,4 @@ void QtWaveformRendererFilteredSignal::draw(QPainter* painter, QPaintEvent* /*ev
         painter->setBrush(m_highBrush);
     }
     painter->drawPolygon(&m_polygon[2][0], numberOfPoints);
-
-    painter->restore();
 }

@@ -1,72 +1,73 @@
-// recordingfeature.cpp
-// Created 03/26/2010 by Tobias Rafreider
-
-#include "library/recording/dlgrecording.h"
-#include "track/track.h"
-#include "library/treeitem.h"
 #include "library/recording/recordingfeature.h"
-#include "library/library.h"
-#include "library/trackcollection.h"
-#include "widget/wlibrary.h"
-#include "controllers/keyboard/keyboardeventfilter.h"
 
-const QString RecordingFeature::m_sRecordingViewName = QString("Recording");
+#include "controllers/keyboard/keyboardeventfilter.h"
+#include "library/browse/foldertreemodel.h"
+#include "library/recording/dlgrecording.h"
+#include "moc_recordingfeature.cpp"
+#include "widget/wlibrary.h"
+
+namespace {
+
+const QString kViewName = QStringLiteral("Recording");
+
+} // anonymous namespace
 
 RecordingFeature::RecordingFeature(Library* pLibrary,
-                                   UserSettingsPointer pConfig,
-                                   TrackCollection* pTrackCollection,
-                                   RecordingManager* pRecordingManager)
-        : LibraryFeature(pLibrary),
-          m_pConfig(pConfig),
-          m_pLibrary(pLibrary),
-          m_pTrackCollection(pTrackCollection),
-          m_pRecordingManager(pRecordingManager) {
-}
-
-RecordingFeature::~RecordingFeature() {
-
+        UserSettingsPointer pConfig,
+        RecordingManager* pRecordingManager)
+        : LibraryFeature(pLibrary, pConfig, QStringLiteral("recordings")),
+          m_pRecordingManager(pRecordingManager),
+          m_pSidebarModel(new FolderTreeModel(this)) {
 }
 
 QVariant RecordingFeature::title() {
     return QVariant(tr("Recordings"));
 }
 
-QIcon RecordingFeature::getIcon() {
-    return QIcon(":/images/library/ic_library_recordings.png");
+TreeItemModel* RecordingFeature::sidebarModel() const {
+    return m_pSidebarModel;
 }
 
-TreeItemModel* RecordingFeature::getChildModel() {
-    return &m_childModel;
-}
-void RecordingFeature::bindWidget(WLibrary* pLibraryWidget,
+void RecordingFeature::bindLibraryWidget(WLibrary* pLibraryWidget,
                                   KeyboardEventFilter *keyboard) {
     //The view will be deleted by LibraryWidget
     DlgRecording* pRecordingView = new DlgRecording(pLibraryWidget,
                                                     m_pConfig,
                                                     m_pLibrary,
-                                                    m_pTrackCollection,
                                                     m_pRecordingManager,
                                                     keyboard);
 
     pRecordingView->installEventFilter(keyboard);
-    pLibraryWidget->registerView(m_sRecordingViewName, pRecordingView);
-    connect(pRecordingView, SIGNAL(loadTrack(TrackPointer)),
-            this, SIGNAL(loadTrack(TrackPointer)));
-    connect(pRecordingView, SIGNAL(loadTrackToPlayer(TrackPointer, QString, bool)),
-            this, SIGNAL(loadTrackToPlayer(TrackPointer, QString, bool)));
-    connect(this, SIGNAL(refreshBrowseModel()),
-            pRecordingView, SLOT(refreshBrowseModel()));
-    connect(this, SIGNAL(requestRestoreSearch()),
-            pRecordingView, SLOT(slotRestoreSearch()));
-    connect(pRecordingView, SIGNAL(restoreSearch(QString)),
-            this, SIGNAL(restoreSearch(QString)));
+    pLibraryWidget->registerView(kViewName, pRecordingView);
+    connect(pRecordingView,
+            &DlgRecording::loadTrack,
+            this,
+            &RecordingFeature::loadTrack);
+    connect(pRecordingView,
+            &DlgRecording::loadTrackToPlayer,
+            this,
+            &RecordingFeature::loadTrackToPlayer);
+    connect(this,
+            &RecordingFeature::refreshBrowseModel,
+            pRecordingView,
+            &DlgRecording::refreshBrowseModel);
+    connect(this,
+            &RecordingFeature::requestRestoreSearch,
+            pRecordingView,
+            &DlgRecording::slotRestoreSearch);
+    connect(pRecordingView,
+            &DlgRecording::restoreSearch,
+            this,
+            &RecordingFeature::restoreSearch);
+    connect(pRecordingView,
+            &DlgRecording::restoreModelState,
+            this,
+            &RecordingFeature::restoreModelState);
 }
 
-
 void RecordingFeature::activate() {
-    emit(refreshBrowseModel());
-    emit(switchToView(m_sRecordingViewName));
-    // Ask the view to emit a restoreSearch signal.
-    emit(requestRestoreSearch());
-    emit(enableCoverArtDisplay(false));
+    emit refreshBrowseModel();
+    emit switchToView(kViewName);
+    emit requestRestoreSearch();
+    emit enableCoverArtDisplay(false);
 }

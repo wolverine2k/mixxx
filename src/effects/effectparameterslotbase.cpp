@@ -1,52 +1,67 @@
-#include <QtDebug>
-
-#include "control/controleffectknob.h"
 #include "effects/effectparameterslotbase.h"
+
 #include "control/controlobject.h"
-#include "control/controlpushbutton.h"
+#include "effects/effectparameter.h"
+#include "moc_effectparameterslotbase.cpp"
 
 EffectParameterSlotBase::EffectParameterSlotBase(const QString& group,
-                                                 const unsigned int iParameterSlotNumber)
+        const unsigned int iParameterSlotNumber,
+        const EffectParameterType parameterType)
         : m_iParameterSlotNumber(iParameterSlotNumber),
           m_group(group),
-          m_pEffectParameter(NULL),
-          m_pControlLoaded(NULL),
-          m_pControlType(NULL),
+          m_pEffectParameter(nullptr),
+          m_pManifestParameter(nullptr),
+          m_parameterType(parameterType),
+          m_pControlLoaded(nullptr),
+          m_pControlType(nullptr),
           m_dChainParameter(0.0) {
-
 }
 
-EffectParameterSlotBase::~EffectParameterSlotBase() {
-    m_pEffectParameter = NULL;
-    m_pEffect.clear();
-    delete m_pControlLoaded;
-    delete m_pControlType;
-}
+EffectParameterSlotBase::~EffectParameterSlotBase() = default;
 
 QString EffectParameterSlotBase::name() const {
-    if (m_pEffectParameter) {
-        return m_pEffectParameter->name();
+    if (m_pManifestParameter) {
+        return m_pManifestParameter->name();
     }
     return QString();
 }
 
 QString EffectParameterSlotBase::shortName() const {
-    if (m_pEffectParameter) {
-        return m_pEffectParameter->shortName();
+    if (m_pManifestParameter) {
+        return m_pManifestParameter->shortName();
     }
     return QString();
 }
 
 QString EffectParameterSlotBase::description() const {
-    if (m_pEffectParameter) {
-        return m_pEffectParameter->description();
+    if (m_pManifestParameter) {
+        return m_pManifestParameter->description();
     }
     return tr("No effect loaded.");
 }
 
-const EffectManifestParameter EffectParameterSlotBase::getManifest() {
-    if (m_pEffectParameter) {
-        return m_pEffectParameter->manifest();
+EffectParameterType EffectParameterSlotBase::parameterType() const {
+    return m_parameterType;
+}
+
+EffectManifestParameterPointer EffectParameterSlotBase::getManifest() {
+    if (m_pManifestParameter) {
+        return m_pManifestParameter;
     }
-    return EffectManifestParameter();
+    return EffectManifestParameterPointer();
+}
+
+void EffectParameterSlotBase::syncSofttakeover() {
+}
+
+void EffectParameterSlotBase::onEffectMetaParameterChanged(double parameter, bool force) {
+    Q_UNUSED(parameter);
+    Q_UNUSED(force);
+}
+
+void EffectParameterSlotBase::slotValueChanged(double v) {
+    if (m_pEffectParameter) {
+        m_pEffectParameter->setValue(v);
+        emit valueChanged(v);
+    }
 }

@@ -1,61 +1,24 @@
-#include <gtest/gtest.h>
-
 #include <QDir>
-#include <QFile>
-#include <QTemporaryFile>
 #include <QtDebug>
 
-#include "track/trackmetadatataglib.h"
+#include "sources/metadatasourcetaglib.h"
+#include "test/mixxxtest.h"
 
-namespace {
 
-const QDir kTestDir(QDir::current().absoluteFilePath("src/test/id3-test-data"));
-
-class TagLibTest : public testing::Test {};
-
-class FileRemover final {
-public:
-    explicit FileRemover(const QString& fileName)
-        : m_fileName(fileName) {
-    }
-    ~FileRemover() {
-        QFile::remove(m_fileName);
-    }
-private:
-    QString m_fileName;
+class TagLibTest : public testing::Test {
 };
 
-QString generateTemporaryFileName(const QString& fileNameTemplate) {
-    QTemporaryFile tmpFile(fileNameTemplate);
-    tmpFile.open();
-    DEBUG_ASSERT(tmpFile.exists());
-    const QString tmpFileName(tmpFile.fileName());
-    FileRemover tmpFileRemover(tmpFileName);
-    return tmpFileName;
-}
-
-void copyFile(const QString& srcFileName, const QString& dstFileName) {
-    QFile srcFile(srcFileName);
-    DEBUG_ASSERT(srcFile.exists());
-    qDebug() << "Copying file"
-            << srcFileName
-            << "->"
-            <<dstFileName;
-    srcFile.copy(dstFileName);
-    QFile dstFile(dstFileName);
-    DEBUG_ASSERT(dstFile.exists());
-    DEBUG_ASSERT(srcFile.size() == dstFile.size());
-}
-
 TEST_F(TagLibTest, WriteID3v2Tag) {
+    QTemporaryDir tempDir;
+    ASSERT_TRUE(tempDir.isValid());
+
     // Generate a file name for the temporary file
-    const QString tmpFileName = generateTemporaryFileName("no_id3v1_mp3");
+    const QString tmpFileName = tempDir.filePath("no_id3v1_mp3");
 
-    // Create the temporary file by copying an exiting file
-    copyFile(kTestDir.absoluteFilePath("empty.mp3"), tmpFileName);
-
-    // Ensure that the temporary file is removed after the test
-    FileRemover tmpFileRemover(tmpFileName);
+    // Create the temporary file by copying an existing file
+    mixxxtest::copyFile(
+            MixxxTest::getOrInitTestDir().filePath(QStringLiteral("id3-test-data/empty.mp3")),
+            tmpFileName);
 
     // Verify that the file has no tags
     {
@@ -66,11 +29,17 @@ TEST_F(TagLibTest, WriteID3v2Tag) {
         EXPECT_FALSE(mixxx::taglib::hasAPETag(mpegFile));
     }
 
+    qDebug() << "Setting track title";
+
     // Write metadata -> only an ID3v2 tag should be added
     mixxx::TrackMetadata trackMetadata;
-    trackMetadata.setTitle("title");
-    ASSERT_EQ(OK, mixxx::taglib::writeTrackMetadataIntoFile(
-            trackMetadata, tmpFileName, mixxx::taglib::FileType::MP3));
+    trackMetadata.refTrackInfo().setTitle(QStringLiteral("title"));
+    const auto exported =
+            mixxx::MetadataSourceTagLib(
+                    tmpFileName, "mp3")
+                    .exportTrackMetadata(trackMetadata);
+    ASSERT_EQ(mixxx::MetadataSource::ExportResult::Succeeded, exported.first);
+    ASSERT_FALSE(exported.second.isNull());
 
     // Check that the file only has an ID3v2 tag after writing metadata
     {
@@ -81,10 +50,16 @@ TEST_F(TagLibTest, WriteID3v2Tag) {
         EXPECT_FALSE(mixxx::taglib::hasAPETag(mpegFile));
     }
 
+    qDebug() << "Updating track title";
+
     // Write metadata again -> only the ID3v2 tag should be modified
-    trackMetadata.setTitle("title2");
-    ASSERT_EQ(OK, mixxx::taglib::writeTrackMetadataIntoFile(
-            trackMetadata, tmpFileName, mixxx::taglib::FileType::MP3));
+    trackMetadata.refTrackInfo().setTitle(QStringLiteral("title2"));
+    const auto exported2 =
+            mixxx::MetadataSourceTagLib(
+                    tmpFileName, "mp3")
+                    .exportTrackMetadata(trackMetadata);
+    ASSERT_EQ(mixxx::MetadataSource::ExportResult::Succeeded, exported.first);
+    ASSERT_FALSE(exported.second.isNull());
 
     // Check that the file (still) only has an ID3v2 tag after writing metadata
     {
@@ -96,4 +71,63 @@ TEST_F(TagLibTest, WriteID3v2Tag) {
     }
 }
 
-}  // anonymous namespace
+#ifndef __WINDOWS__ // Note: Following Windows links (*.lnk shortcuts) is not supported by Mixxx yet
+TEST_F(TagLibTest, WriteID3v2TagViaLink) {
+    QTemporaryDir tempDir;
+    ASSERT_TRUE(tempDir.isValid());
+
+    // Generate a file name for the temporary file
+    const QString tmpFileName = tempDir.filePath("no_id3v1_mp3");
+
+    // Create the temporary file by copying an existing file
+    mixxxtest::copyFile(
+            MixxxTest::getOrInitTestDir().filePath(QStringLiteral("id3-test-data/empty.mp3")),
+            tmpFileName);
+
+    // Access the MP3 file indirectly via a symlink when reading & writing the tags
+    const QString linkFileName = tempDir.filePath("no_id3v1_mp3_link");
+    EXPECT_TRUE(QFile::link(tmpFileName, linkFileName));
+
+    auto linkFileInfoBefore = QFileInfo(linkFileName);
+    EXPECT_TRUE(linkFileInfoBefore.exists());
+    EXPECT_TRUE(linkFileInfoBefore.isSymLink());
+    EXPECT_EQ(linkFileInfoBefore.canonicalFilePath().toStdString(), tmpFileName.toStdString());
+
+    // Verify that the file has no tags
+    {
+        TagLib::MPEG::File mpegFile(
+                TAGLIB_FILENAME_FROM_QSTRING(linkFileName));
+        EXPECT_FALSE(mixxx::taglib::hasID3v1Tag(mpegFile));
+        EXPECT_FALSE(mixxx::taglib::hasID3v2Tag(mpegFile));
+        EXPECT_FALSE(mixxx::taglib::hasAPETag(mpegFile));
+    }
+
+    qDebug() << "Setting track title";
+
+    // Write metadata (via the symlink) -> only an ID3v2 tag should be added
+    mixxx::TrackMetadata trackMetadata;
+    trackMetadata.refTrackInfo().setTitle(QStringLiteral("title"));
+    const auto exported =
+            mixxx::MetadataSourceTagLib(
+                    linkFileName, "mp3")
+                    .exportTrackMetadata(trackMetadata);
+    ASSERT_EQ(mixxx::MetadataSource::ExportResult::Succeeded, exported.first);
+    ASSERT_FALSE(exported.second.isNull());
+
+    // Check that the file only has an ID3v2 tag after writing metadata
+    {
+        TagLib::MPEG::File mpegFile(
+                TAGLIB_FILENAME_FROM_QSTRING(linkFileName));
+        EXPECT_FALSE(mixxx::taglib::hasID3v1Tag(mpegFile));
+        EXPECT_TRUE(mixxx::taglib::hasID3v2Tag(mpegFile));
+        EXPECT_FALSE(mixxx::taglib::hasAPETag(mpegFile));
+    }
+
+    // Verify that the symlink still exists and still points to the correct file
+    auto linkFileInfoAfter = QFileInfo(linkFileName);
+
+    EXPECT_TRUE(linkFileInfoAfter.exists());
+    EXPECT_EQ(linkFileInfoAfter.canonicalFilePath().toStdString(), tmpFileName.toStdString());
+    EXPECT_TRUE(linkFileInfoAfter.isSymLink());
+}
+#endif

@@ -1,22 +1,16 @@
-#ifndef WANALYSISLIBRARYTABLEVIEW_H
-#define WANALYSISLIBRARYTABLEVIEW_H
-
-#include <QWidget>
+#pragma once
 
 #include "preferences/usersettings.h"
 #include "widget/wtracktableview.h"
 
-class TrackCollection;
+class WAnalysisLibraryTableView : public WTrackTableView {
+    Q_OBJECT
+  public:
+    WAnalysisLibraryTableView(
+            QWidget* parent,
+            UserSettingsPointer pConfig,
+            Library* pLibrary,
+            double trackTableBackgroundColorOpacity);
 
-class WAnalysisLibraryTableView : public WTrackTableView
-{
-    public:
-        WAnalysisLibraryTableView(QWidget* parent, UserSettingsPointer pConfig,
-                                 TrackCollection* pTrackCollection);
-
-        virtual void onSearchStarting();
-        virtual void onSearchCleared();
-        void onSearch(const QString& text) override;
+    void onSearch(const QString& text) override;
 };
-
-#endif

@@ -9,31 +9,18 @@
 // Copyright: See COPYING file that comes with this distribution
 //
 //
-#ifndef PARSERPLS_H
-#define PARSERPLS_H
+#pragma once
+
+#include <QList>
+#include <QString>
+#include <QTextStream>
 
 #include "library/parser.h"
 
-#include <QTextStream>
-#include <QList>
-#include <QString>
-
 class ParserPls : public Parser {
-    Q_OBJECT
   public:
-    ParserPls();
-    virtual ~ParserPls();
-    /**Can be called to parse a pls file**/
-    QList<QString> parse(QString);
-    //Playlist Export
-    static bool writePLSFile(const QString &file, QList<QString> &items, bool useRelativePath);
-
-  private:
-    /**Returns the Number of entries in the pls file**/
-    long getNumEntries(QTextStream*);
-    /**Reads a line from the file and returns filepath**/
-    QString getFilepath(QTextStream*, QString);
-
+    static bool isPlaylistFilenameSupported(const QString& fileName);
+    static QList<QString> parseAllLocations(const QString& playlistFile);
+    /// Playlist Export
+    static bool writePLSFile(const QString &file, const QList<QString> &items, bool useRelativePath);
 };
-
-#endif

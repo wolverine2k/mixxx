@@ -1,9 +1,8 @@
-#ifndef STAT_H
-#define STAT_H
+#pragma once
 
 #include <QMap>
-#include <QVector>
 #include <QString>
+#include <QVector>
 
 #include "util/experiment.h"
 
@@ -24,58 +23,60 @@ class Stat {
 
     static QString statTypeToString(StatType type) {
         switch (type) {
-            case UNSPECIFIED:
-                return "UNSPECIFIED";
-            case COUNTER:
-                return "COUNTER";
-            case DURATION_MSEC:
-                return "DURATION_MSEC";
-            case DURATION_NANOSEC:
-                return "DURATION_NANOSEC";
-            case DURATION_SEC:
-                return "DURATION_SEC";
-            case EVENT:
-                return "EVENT";
-            case EVENT_START:
-                return "START";
-            case EVENT_END:
-                return "END";
-            default:
-                return "UNKNOWN";
+        case UNSPECIFIED:
+            return "UNSPECIFIED";
+        case COUNTER:
+            return "COUNTER";
+        case DURATION_MSEC:
+            return "DURATION_MSEC";
+        case DURATION_NANOSEC:
+            return "DURATION_NANOSEC";
+        case DURATION_SEC:
+            return "DURATION_SEC";
+        case EVENT:
+            return "EVENT";
+        case EVENT_START:
+            return "START";
+        case EVENT_END:
+            return "END";
+        default:
+            return "UNKNOWN";
         }
     }
 
+    // TODO make this an enum class for improved typesafety and issues with
+    // ambiguous overloads.
     enum ComputeTypes {
-        NONE            = 0x0000,
+        NONE = 0x0000,
         // O(1) in time and space.
-        COUNT           = 0x0001,
+        COUNT = 0x0001,
         // O(1) in time and space
-        SUM             = 0x0002,
+        SUM = 0x0002,
         // O(1) in time and space.
-        AVERAGE         = 0x0004,
+        AVERAGE = 0x0004,
         // O(1) in time and space.
         SAMPLE_VARIANCE = 0x0008,
-        SAMPLE_MEDIAN   = 0x0010,
+        SAMPLE_MEDIAN = 0x0010,
         // O(1) in time and space.
-        MIN             = 0x0020,
+        MIN = 0x0020,
         // O(1) in time and space.
-        MAX             = 0x0040,
+        MAX = 0x0040,
         // O(1) in time, O(k) in space where k is # of distinct values.
         // Use carefully!
-        HISTOGRAM       = 0x0080,
+        HISTOGRAM = 0x0080,
         // O(1) in time, O(n) in space where n is the # of reports.
         // Use carefully!
-        VALUES          = 0x0100,
+        VALUES = 0x0100,
         // TODO, track average reports per second
         REPORTS_PER_SECOND = 0x0200,
         // TODO, track the time in between received reports.
         REPORT_TIME_DELTA = 0x0400,
         // Used for marking stats recorded in EXPERIMENT mode.
-        STATS_EXPERIMENT  = 0x0800,
+        STATS_EXPERIMENT = 0x0800,
         // Used for marking stats recorded in BASE mode.
-        STATS_BASE        = 0x1000,
+        STATS_BASE = 0x1000,
     };
-    typedef int ComputeFlags;
+    Q_DECLARE_FLAGS(ComputeFlags, ComputeTypes);
 
     static Experiment::Mode modeFromFlags(ComputeFlags flags) {
         if (flags & Stat::STATS_EXPERIMENT) {
@@ -88,13 +89,13 @@ class Stat {
 
     static ComputeFlags experimentFlags(ComputeFlags flags) {
         switch (Experiment::mode()) {
-            case Experiment::EXPERIMENT:
-                return flags | STATS_EXPERIMENT;
-            case Experiment::BASE:
-                return flags | STATS_BASE;
-            default:
-            case Experiment::OFF:
-                return flags;
+        case Experiment::EXPERIMENT:
+            return flags | STATS_EXPERIMENT;
+        case Experiment::BASE:
+            return flags | STATS_BASE;
+        default:
+        case Experiment::OFF:
+            return flags;
         }
     }
 
@@ -118,20 +119,29 @@ class Stat {
     double m_variance_sk;
     QMap<double, double> m_histogram;
 
-    static bool track(const QString& tag,
-                      Stat::StatType type,
-                      Stat::ComputeFlags compute,
-                      double value);
+    static bool track(QString tag,
+            Stat::StatType type,
+            Stat::ComputeFlags compute,
+            double value);
+
+    // Disallow to use this class with implicit converted char strings.
+    // This should not be uses to avoid unicode encoding and memory
+    // allocation at every call. Use a static tag like this:
+    // static const QString tag("TAG TEXT");
+    static bool track(const char*,
+            Stat::StatType,
+            Stat::ComputeFlags,
+            double) = delete;
 };
 
-QDebug operator<<(QDebug dbg, const Stat &stat);
+Q_DECLARE_OPERATORS_FOR_FLAGS(Stat::ComputeFlags);
+
+QDebug operator<<(QDebug dbg, const Stat& stat);
 
 struct StatReport {
-    char* tag;
+    QString tag;
     qint64 time;
     Stat::StatType type;
     Stat::ComputeFlags compute;
     double value;
 };
-
-#endif /* STAT_H */

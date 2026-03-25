@@ -1,20 +1,19 @@
-/**
-* @file encoderwave.cpp
-* @author Josep Maria Antolín
-* @date Feb 27 2017
-* @brief wave/aiff "encoder" for mixxx
-*/
+#include "encoder/encoderwave.h"
+
+#include <infotag.h>
+#include <qendian.h>
+#include <qglobal.h>
+#include <sndfile.h>
 
 #include <QtDebug>
 
-#include "encoder/encoderwave.h"
-
+#include "audio/types.h"
 #include "encoder/encodercallback.h"
-#include "errordialoghandler.h"
+#include "encoder/encoderwavesettings.h"
 #include "recording/defs_recording.h"
+#include "util/assert.h"
 
-
-// The virtual file contex must return the length of the virtual file in bytes.
+// The virtual file context must return the length of the virtual file in bytes.
 static sf_count_t  sf_f_get_filelen (void *user_data)
 {
     EncoderCallback* pCallback = static_cast<EncoderCallback*>(user_data);
@@ -69,12 +68,10 @@ static sf_count_t  sf_f_tell (void *user_data)
     return pCallback->tell();
 }
 
-
-
-
 EncoderWave::EncoderWave(EncoderCallback* pCallback)
         : m_pCallback(pCallback),
-          m_pSndfile(nullptr) {
+          m_pSndfile(nullptr),
+          m_channels(2) {
     m_sfInfo.frames = 0;
     m_sfInfo.samplerate = 0;
     m_sfInfo.channels = 0;
@@ -98,18 +95,15 @@ EncoderWave::~EncoderWave() {
     }
 }
 
-void EncoderWave::setEncoderSettings(const EncoderSettings& settings)
-{
+void EncoderWave::setEncoderSettings(const EncoderSettings& settings) {
     const EncoderWaveSettings& wavesettings = reinterpret_cast<const EncoderWaveSettings&>(settings);
-    Encoder::Format format = wavesettings.getFormat();
-    if (format.internalName == ENCODING_WAVE) {
+    QString format = wavesettings.getFormat();
+    if (format == ENCODING_WAVE) {
         m_sfInfo.format = SF_FORMAT_WAV;
-    }
-    else if (format.internalName == ENCODING_AIFF) {
+    } else if (format == ENCODING_AIFF) {
         m_sfInfo.format = SF_FORMAT_AIFF;
-    }
-    else {
-        qWarning() << "Unexpected Format when setting EncoderWave: " << format.internalName << ". Reverting to wav";
+    } else {
+        qWarning() << "Unexpected Format when setting EncoderWave: " << format << ". Reverting to wav";
         // Other possibly interesting formats
         // There is a n option for RF64 to automatically downgrade to RIFF WAV if less than 4GB using an
         // sf_command, so it could be interesting to use it in place of FORMAT_WAVE.
@@ -139,16 +133,64 @@ void EncoderWave::setEncoderSettings(const EncoderSettings& settings)
                     << radio << ". reverting to PCM 16bits";
             break;
     }
+
+    // Read channel mode from settings
+    switch (settings.getChannelMode()) {
+    case EncoderSettings::ChannelMode::MONO:
+        m_channels = 1;
+        break;
+    case EncoderSettings::ChannelMode::STEREO:
+        m_channels = 2;
+        break;
+    case EncoderSettings::ChannelMode::AUTOMATIC:
+        m_channels = 2;
+        break;
+    }
 }
 
 // call sendPackages() or write() after 'flush()' as outlined in enginebroadcast.cpp
 void EncoderWave::flush() {
     sf_write_sync(m_pSndfile);
+
+    QString trackList = getTrackList().join("\n");
+
+    TagLib::RIFF::Info::Tag tag;
+    tag.setTitle(QStringToTString(m_metaDataTitle));
+    tag.setArtist(QStringToTString(m_metaDataArtist));
+    tag.setAlbum(QStringToTString(m_metaDataAlbum));
+    tag.setComment(QStringToTString(trackList));
+
+    TagLib::ByteVector tagBuffer = tag.render();
+
+    // Write the LIST chunk header.
+    QByteArray listChunkHeaderBuffer = QByteArray("LIST");
+    listChunkHeaderBuffer.resize(8);
+    qToLittleEndian(tagBuffer.size(), listChunkHeaderBuffer.data() + 4);
+
+    m_pCallback->write(nullptr,
+            reinterpret_cast<const unsigned char*>(listChunkHeaderBuffer.constData()),
+            0,
+            listChunkHeaderBuffer.size());
+
+    // Write the INFO chunks.
+    m_pCallback->write(nullptr,
+            reinterpret_cast<const unsigned char*>(tagBuffer.data()),
+            0,
+            tagBuffer.size());
+
+    // Update the file header with the new file size
+    int fileSize = m_pCallback->tell();
+    m_pCallback->seek(4);
+    auto fileSizeBuffer = QByteArray(4, 0);
+    qToLittleEndian(fileSize - 8, listChunkHeaderBuffer.data());
+    m_pCallback->write(nullptr,
+            reinterpret_cast<const unsigned char*>(fileSizeBuffer.constData()),
+            0,
+            4);
 }
 
-
-void EncoderWave::encodeBuffer(const CSAMPLE *pBuffer, const int iBufferSize) {
-    sf_write_float(m_pSndfile, pBuffer, iBufferSize);
+void EncoderWave::encodeBuffer(const CSAMPLE* pBuffer, const std::size_t bufferSize) {
+    sf_write_float(m_pSndfile, pBuffer, bufferSize);
 }
 
 /* Originally called from enginebroadcast.cpp to update metadata information
@@ -156,21 +198,28 @@ void EncoderWave::encodeBuffer(const CSAMPLE *pBuffer, const int iBufferSize) {
  *
  * Currently this method is used before init() once to save artist, title and album
 */
-void EncoderWave::updateMetaData(const QString& artist, const QString& title, const QString& album) {
-    m_metaDataTitle = title;
-    m_metaDataArtist = artist;
-    m_metaDataAlbum = album;
+void EncoderWave::updateMetaData(const QString& artist,
+        const QString& title,
+        const QString& album,
+        std::chrono::seconds timecode) {
+    if (m_pSndfile == nullptr) {
+        m_metaDataTitle = title;
+        m_metaDataArtist = artist;
+        m_metaDataAlbum = album;
+    } else {
+        addToTracklist(artist, title, timecode);
+    }
 }
 
 void EncoderWave::initStream() {
 
     // Tell the encoder to automatically convert float input range to the correct output range.
-    sf_command(m_pSndfile, SFC_SET_NORM_FLOAT, NULL, SF_TRUE);
+    sf_command(m_pSndfile, SFC_SET_NORM_FLOAT, nullptr, SF_TRUE);
     // Tell the encoder that, when converting to integer formats, clip
     // automatically the values that go outside of the allowed range.
     // Warning! Depending on how libsndfile is compiled autoclip may not work.
     // Ensure CPU_CLIPS_NEGATIVE and CPU_CLIPS_POSITIVE is setup properly in the build.
-    sf_command(m_pSndfile, SFC_SET_CLIPPING, NULL, SF_TRUE) ;
+    sf_command(m_pSndfile, SFC_SET_CLIPPING, nullptr, SF_TRUE);
 
     // Strings passed to and retrieved from sf_get_string/sf_set_string are assumed to be utf-8.
     // However, while formats like Ogg/Vorbis and FLAC fully support utf-8, others like WAV and
@@ -178,14 +227,14 @@ void EncoderWave::initStream() {
     // libsndfile will work when read back with libsndfile, but may not work with other programs.
     int ret;
     if (!m_metaDataTitle.isEmpty()) {
-        ret = sf_set_string(m_pSndfile, SF_STR_TITLE, m_metaDataTitle.toAscii().constData());
+        ret = sf_set_string(m_pSndfile, SF_STR_TITLE, m_metaDataTitle.toUtf8().constData());
         if (ret != 0) {
             qWarning("libsndfile error: %s", sf_error_number(ret));
         }
     }
 
     if (!m_metaDataArtist.isEmpty()) {
-        ret = sf_set_string(m_pSndfile, SF_STR_ARTIST, m_metaDataArtist.toAscii().constData());
+        ret = sf_set_string(m_pSndfile, SF_STR_ARTIST, m_metaDataArtist.toUtf8().constData());
         if (ret != 0) {
             qWarning("libsndfile error: %s", sf_error_number(ret));
         }
@@ -197,19 +246,20 @@ void EncoderWave::initStream() {
             // write the SF_STR_COMMENT string into the text chunk with id "ANNO".
             strType = SF_STR_COMMENT;
         }
-        ret = sf_set_string(m_pSndfile, strType, m_metaDataAlbum.toAscii().constData());
+        ret = sf_set_string(m_pSndfile, strType, m_metaDataAlbum.toUtf8().constData());
         if (ret != 0) {
             qWarning("libsndfile error: %s", sf_error_number(ret));
         }
     }
 }
 
-int EncoderWave::initEncoder(int samplerate, QString errorMessage) {
-
+int EncoderWave::initEncoder(mixxx::audio::SampleRate sampleRate,
+        QString* pUserErrorMessage) {
+    Q_UNUSED(pUserErrorMessage);
     // set sfInfo.
     // m_sfInfo.format is setup on setEncoderSettings previous to calling initEncoder.
-    m_sfInfo.samplerate = samplerate;
-    m_sfInfo.channels = 2;
+    m_sfInfo.samplerate = sampleRate;
+    m_sfInfo.channels = m_channels;
     m_sfInfo.frames = 0;
     m_sfInfo.sections = 0;
     m_sfInfo.seekable = 0;
@@ -221,9 +271,9 @@ int EncoderWave::initEncoder(int samplerate, QString errorMessage) {
 
     int ret=0;
     if (m_pSndfile == nullptr) {
-        errorMessage = QString("Error initializing Wave recording. sf_open_virtual returned: ")
-            +  sf_strerror(nullptr);
-        qDebug() << errorMessage;
+        qDebug()
+                << "Error initializing Wave encoding. sf_open_virtual returned:"
+                << sf_strerror(nullptr);
         ret = -1;
     } else {
         initStream();

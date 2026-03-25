@@ -1,20 +1,26 @@
-#include <QLineEdit>
-
 #include "widget/wbeatspinbox.h"
+
+#include <QKeyEvent>
+#include <QRegularExpression>
 
 #include "control/controlobject.h"
 #include "control/controlproxy.h"
+#include "moc_wbeatspinbox.cpp"
+#include "skin/legacy/skincontext.h"
 #include "util/math.h"
 
-QRegExp WBeatSpinBox::s_regexpBlacklist("[^0-9.,/ ]");
+namespace {
+const QRegularExpression kBlockListRegex(QStringLiteral("[^0-9.,/ ]"));
+} // namespace
 
-WBeatSpinBox::WBeatSpinBox(QWidget * parent, ControlObject* pValueControl,
-                           int decimals, double minimum, double maximum)
-        : WBaseWidget(parent),
-          m_valueControl(
-            pValueControl ?
-            pValueControl->getKey() : ConfigKey(), this
-          ),
+WBeatSpinBox::WBeatSpinBox(QWidget* parent,
+        const ConfigKey& configKey,
+        int decimals,
+        double minimum,
+        double maximum)
+        : QDoubleSpinBox(parent),
+          WBaseWidget(this),
+          m_valueControl(configKey, this, ControlFlag::NoAssertIfMissing),
           m_scaleFactor(1.0) {
     // replace the original QLineEdit by one that supports font scaling.
     setLineEdit(new WBeatLineEdit(this));
@@ -22,20 +28,24 @@ WBeatSpinBox::WBeatSpinBox(QWidget * parent, ControlObject* pValueControl,
     setMinimum(minimum);
     setMaximum(maximum);
     setKeyboardTracking(false);
-    // Prevent this widget from getting focused with tab
+    // Prevent this widget from getting focused with Tab
     // to avoid interfering with using the library via keyboard.
     setFocusPolicy(Qt::ClickFocus);
+    // This is necessary to also ignore Shift+Tab (Qt::BacktabFocusReason).
+    lineEdit()->setFocusPolicy(Qt::ClickFocus);
 
     setValue(m_valueControl.get());
-    connect(this, SIGNAL(valueChanged(double)),
-            this, SLOT(slotSpinboxValueChanged(double)));
-    m_valueControl.connectValueChanged(SLOT(slotControlValueChanged(double)));
+    connect(this,
+            QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this,
+            &WBeatSpinBox::slotSpinboxValueChanged);
+    m_valueControl.connectValueChanged(this, &WBeatSpinBox::slotControlValueChanged);
 }
 
 void WBeatSpinBox::setup(const QDomNode& node, const SkinContext& context) {
     Q_UNUSED(node);
     m_scaleFactor = context.getScaleFactor();
-    static_cast<WBeatLineEdit*>(lineEdit())->setScaleFactor(m_scaleFactor);
+    qobject_cast<WBeatLineEdit*>(lineEdit())->setScaleFactor(m_scaleFactor);
 }
 
 void WBeatSpinBox::stepBy(int steps) {
@@ -44,25 +54,14 @@ void WBeatSpinBox::stepBy(int steps) {
     QString temp = text();
     int cursorPos = lineEdit()->cursorPosition();
     if (validate(temp, cursorPos) == QValidator::Acceptable) {
-        double editValue = valueFromText(temp);
-        newValue = editValue * pow(2, steps);
-        if (newValue < minimum() || newValue > maximum()) {
-            // don't clamp the value here to not fall out of a measure
-            newValue = editValue;
-        }
+        newValue = valueFromText(temp) * pow(2, steps);
     } else {
         // here we have an unacceptable edit, going back to the old value first
         newValue = oldValue;
     }
     // Do not call QDoubleSpinBox::setValue directly in case
     // the new value of the ControlObject needs to be confirmed.
-    // Curiously, m_valueControl.set() does not cause slotControlValueChanged
-    // to execute for beatjump_size, so call QDoubleSpinBox::setValue in this function.
     m_valueControl.set(newValue);
-    double coValue = m_valueControl.get();
-    if (coValue != value()) {
-        setValue(coValue);
-    }
     selectAll();
 }
 
@@ -195,7 +194,8 @@ double WBeatSpinBox::valueFromText(const QString& text) const {
 
 QValidator::State WBeatSpinBox::validate(QString& input, int& pos) const {
     Q_UNUSED(pos);
-    if (input.contains(s_regexpBlacklist)) {
+    QRegularExpressionMatch blockListMatch = kBlockListRegex.match(input);
+    if (blockListMatch.hasMatch()) {
         return QValidator::Invalid;
     }
     if (input.isEmpty()) {
@@ -278,10 +278,24 @@ bool WBeatSpinBox::event(QEvent* pEvent) {
         // QAbstractSpinBox::minimumSizeHint() the lineEdit()->font() is used for
         // rendering
         if (fonti.pixelSize() > 0) {
-            const_cast<QFont&>(fonti).setPixelSize(fonti.pixelSize() * m_scaleFactor);
+            const_cast<QFont&>(fonti).setPixelSize(
+                    static_cast<int>(fonti.pixelSize() * m_scaleFactor));
         }
     }
     return QDoubleSpinBox::event(pEvent);
+}
+
+void WBeatSpinBox::keyPressEvent(QKeyEvent* pEvent) {
+    // By default, Return & Enter keys apply the current value.
+    // Additionally, move focus back to the previously focused library widget.
+    if (pEvent->key() == Qt::Key_Return ||
+            pEvent->key() == Qt::Key_Enter ||
+            pEvent->key() == Qt::Key_Escape) {
+        QDoubleSpinBox::keyPressEvent(pEvent);
+        ControlObject::set(ConfigKey("[Library]", "refocus_prev_widget"), 1);
+        return;
+    }
+    QDoubleSpinBox::keyPressEvent(pEvent);
 }
 
 bool WBeatLineEdit::event(QEvent* pEvent) {
@@ -293,7 +307,8 @@ bool WBeatLineEdit::event(QEvent* pEvent) {
         // Only scale pixel size fonts, point size fonts are scaled by the OS
         // This font instance is the one, used for rendering.
         if (fonti.pixelSize() > 0) {
-            const_cast<QFont&>(fonti).setPixelSize(fonti.pixelSize() * m_scaleFactor);
+            const_cast<QFont&>(fonti).setPixelSize(
+                    static_cast<int>(fonti.pixelSize() * m_scaleFactor));
         }
     }
     return QLineEdit::event(pEvent);

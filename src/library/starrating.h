@@ -1,58 +1,58 @@
-/***************************************************************************
-                           starrating.h
-                              -------------------
-     copyright            : (C) 2010 Tobias Rafreider
-     copyright            : (C) 2009 Nokia Corporation
+#pragma once
 
-***************************************************************************/
+#include <QPolygonF>
+#include <QSize>
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
+#include "track/trackrecord.h"
 
+QT_FORWARD_DECLARE_CLASS(QPainter);
+QT_FORWARD_DECLARE_CLASS(QRect);
 
-#ifndef STARRATING_H
-#define STARRATING_H
-
-#include <QMetaType>
-#include <QPointF>
-#include <QVector>
-#include <QPainter>
-#include <QStyledItemDelegate>
-
-/*
- * The StarRating class represents a rating as a number of stars.
- * In addition to holding the data, it is also capable of painting the stars on a QPaintDevice,
- * which in this example is either a view or an editor.
- * The myStarCount member variable stores the current rating, and myMaxStarCount stores
- * the highest possible rating (typically 5).
- */
+/// The StarRating class represents a rating as a number of stars.
+/// In addition to holding the data, it is also capable of painting the stars
+/// on a QPaintDevice, which in this example is either a view or an editor.
+/// The m_starCount member variable stores the current rating, and
+/// m_maxStarCount stores the highest possible rating (typically 5).
 class StarRating {
   public:
     enum EditMode { Editable, ReadOnly };
 
-    StarRating(int starCount = 1, int maxStarCount = 5);
+    static constexpr int kMinStarCount = 0;
+    static constexpr int kInvalidStarCount = -1;
+
+    explicit StarRating(
+            int starCount = kMinStarCount,
+            int maxStarCount = mixxx::TrackRecord::kMaxRating - mixxx::TrackRecord::kMinRating);
 
     void paint(QPainter* painter, const QRect& rect) const;
     QSize sizeHint() const;
 
-    int starCount() const { return m_myStarCount; }
-    int maxStarCount() const { return m_myMaxStarCount; }
-    void setStarCount(int starCount) { m_myStarCount = starCount; }
-    void setMaxStarCount(int maxStarCount) { m_myMaxStarCount = maxStarCount; }
+    int starCount() const {
+        return m_starCount;
+    }
+    int maxStarCount() const {
+        return m_maxStarCount;
+    }
+
+    /// x is the x-position inside the parent rectangle rect
+    int starAtPosition(int x, const QRect& rect) const;
+
+    bool verifyStarCount(int starCount) {
+        return starCount >= kMinStarCount && starCount <= m_maxStarCount;
+    }
+
+    void setStarCount(int starCount) {
+        VERIFY_OR_DEBUG_ASSERT(verifyStarCount(starCount)) {
+            return;
+        }
+        m_starCount = starCount;
+    }
 
   private:
     QPolygonF m_starPolygon;
     QPolygonF m_diamondPolygon;
-    int m_myStarCount;
-    int m_myMaxStarCount;
+    int m_starCount;
+    int m_maxStarCount;
 };
 
 Q_DECLARE_METATYPE(StarRating)
-
-#endif

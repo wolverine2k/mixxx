@@ -1,7 +1,7 @@
 
 function PioneerCDJ2000() {}
 
-PioneerCDJ2000.debug = false; 
+PioneerCDJ2000.debug = false;
 PioneerCDJ2000.jog_sensitivity = 3.0;
 PioneerCDJ2000.scratch_sensitivity = 0.5;
 
@@ -28,4 +28,3 @@ PioneerCDJ2000.select_track_knob = function(channel, control, value, status, gro
     }
     engine.setValue(group,'SelectTrackKnob',value);
 };
-

@@ -1,87 +1,91 @@
-/***************************************************************************
-                          dlgpreflibrary.h  -  description
-                             -------------------
-    begin                : Thu Apr 17 2003
-    copyright            : (C) 2003 by Tue & Ken Haste Andersen
-    email                : haste@diku.dk
- ***************************************************************************/
+#pragma once
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
-#ifndef DLGPREFLIBRARY_H
-#define DLGPREFLIBRARY_H
-
-#include <QStandardItemModel>
-#include <QWidget>
 #include <QFont>
+#include <QStandardItemModel>
+#include <memory>
 
+#include "library/library_decl.h"
+#include "preferences/dialog/dlgpreferencepage.h"
 #include "preferences/dialog/ui_dlgpreflibrarydlg.h"
 #include "preferences/usersettings.h"
-#include "library/library.h"
-#include "preferences/dlgpreferencepage.h"
+#include "util/parented_ptr.h"
 
-/**
-  *@author Tue & Ken Haste Andersen
-  */
+class QWidget;
+class ControlProxy;
 
-class DlgPrefLibrary : public DlgPreferencePage, public Ui::DlgPrefLibraryDlg  {
+class DlgPrefLibrary : public DlgPreferencePage, public Ui::DlgPrefLibraryDlg {
     Q_OBJECT
   public:
-    enum TrackLoadAction {
-        LOAD_TRACK_DECK,  // Load track to next available deck.
-        ADD_TRACK_BOTTOM, // Add track to Auto-DJ Queue (bottom).
-        ADD_TRACK_TOP     // Add track to Auto-DJ Queue (top).
+    enum class TrackDoubleClickAction : int {
+        LoadToDeck = 0,
+        AddToAutoDJBottom = 1,
+        AddToAutoDJTop = 2,
+        Ignore = 3,
     };
 
-    DlgPrefLibrary(QWidget *parent, UserSettingsPointer config,
-                   Library *pLibrary);
-    virtual ~DlgPrefLibrary();
+    enum class CoverArtFetcherQuality {
+        Low = 0,
+        Medium = 1,
+        High = 2,
+        Highest = 3,
+    };
+
+    DlgPrefLibrary(
+            QWidget* pParent,
+            UserSettingsPointer pConfig,
+            std::shared_ptr<Library> pLibrary);
+    ~DlgPrefLibrary() override;
+
+    QUrl helpUrl() const override;
 
   public slots:
     // Common preference page slots.
-    void slotUpdate();
-    void slotShow();
-    void slotHide();
-    void slotResetToDefaults();
-    void slotApply();
-    void slotCancel();
+    void slotUpdate() override;
+    void slotShow() override;
+    void slotHide() override;
+    void slotResetToDefaults() override;
+    void slotApply() override;
+    void slotCancel() override;
 
     // Dialog to browse for music file directory
     void slotAddDir();
     void slotRemoveDir();
     void slotRelocateDir();
-    void slotExtraPlugins();
 
   signals:
     void apply();
     void scanLibrary();
-    void requestAddDir(QString dir);
-    void requestRemoveDir(QString dir, Library::RemovalType removalType);
-    void requestRelocateDir(QString currentDir, QString newDir);
-    void setTrackTableFont(const QFont& font);
-    void setTrackTableRowHeight(int rowHeight);
+    void requestAddDir(const QString& dir);
+    void requestRemoveDir(const QString& dir, LibraryRemovalType removalType);
+    void requestRelocateDir(const QString& currentDir, const QString& newDir);
 
   private slots:
     void slotRowHeightValueChanged(int);
     void slotSelectFont();
+    void slotSyncTrackMetadataToggled();
+    void slotSearchDebouncingTimeoutMillisChanged(int);
+    void slotBpmRangeSelected(int index);
+    void slotBpmColumnPrecisionChanged(int bpmPrecision);
+    void slotSeratoMetadataExportClicked(bool);
+    void slotDateFormatIndexChanged(int index);
+    void slotDateFormatChanged(const QString& text);
 
   private:
-    void initializeDirList();
+    void populateDirList();
     void setLibraryFont(const QFont& font);
+    void resetLibraryFont();
+    void updateSearchLineEditHistoryOptions();
+    void setSeratoMetadataEnabled(bool shouldSyncTrackMetadata);
+    void updateDateFormatPreview(const QString& format);
 
     QStandardItemModel m_dirListModel;
-    UserSettingsPointer m_pconfig;
-    Library* m_pLibrary;
-    bool m_baddedDirectory;
+    UserSettingsPointer m_pConfig;
+    std::shared_ptr<Library> m_pLibrary;
+    bool m_bAddedDirectory;
     QFont m_originalTrackTableFont;
     int m_iOriginalTrackTableRowHeight;
-};
+    // Listen to rate range changes in order to update the fuzzy BPM range
+    parented_ptr<ControlProxy> m_pRateRangeDeck1;
 
-#endif
+    QString m_lastCustomDateFormat;
+};

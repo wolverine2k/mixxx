@@ -8,7 +8,6 @@
 #include "util/db/dbconnection.h"
 
 #include "util/db/sqllikewildcards.h"
-#include "util/memory.h"
 #include "util/logger.h"
 #include "util/assert.h"
 
@@ -24,13 +23,14 @@ const mixxx::Logger kLogger("DbConnection");
 
 QSqlDatabase createDatabase(
         const DbConnection::Params& params,
-        const QString connectionName) {
-    kLogger.debug()
+        const QString& connectionName) {
+    kLogger.info()
         << "Available drivers for database connections:"
         << QSqlDatabase::drivers();
 
     QSqlDatabase database =
             QSqlDatabase::addDatabase(params.type, connectionName);
+    database.setConnectOptions(params.connectOptions);
     database.setHostName(params.hostName);
     database.setDatabaseName(params.filePath);
     database.setUserName(params.userName);
@@ -40,27 +40,41 @@ QSqlDatabase createDatabase(
 
 QSqlDatabase cloneDatabase(
         const QSqlDatabase& database,
-        const QString connectionName) {
+        const QString& connectionName) {
     DEBUG_ASSERT(!database.isOpen());
     return QSqlDatabase::cloneDatabase(database, connectionName);
 }
 
 void removeDatabase(
-        const QSqlDatabase& database) {
-    DEBUG_ASSERT(!database.isOpen());
-    QSqlDatabase::removeDatabase(database.connectionName());
-}
-
-// The default comparison of strings for sorting.
-inline int compareLocaleAwareCaseInsensitive(
-        const QString& first, const QString& second) {
-    return QString::localeAwareCompare(first.toLower(), second.toLower());
+        QSqlDatabase* pDatabase) {
+    DEBUG_ASSERT(pDatabase);
+    DEBUG_ASSERT(!pDatabase->isOpen());
+    // pDatabase must be the last reference to the implicitly shared
+    // QSqlDatabase object
+    QString connectionName = pDatabase->connectionName();
+    // Drop the last reference before actually removing the database
+    // to avoid the following warning:
+    // "Warning [Main]: QSqlDatabasePrivate::removeDatabase: connection
+    // '...' is still in use, all queries will cease to work."
+    *pDatabase = QSqlDatabase();
+    // After all references have been dropped we can safely remove the
+    // connection. If still some of the afore mentioned warnings appear
+    // in the log than a component is misbehaving and still holding an
+    // invalid copy of the QSqlDatabase object that it shouldn't have!!
+    QSqlDatabase::removeDatabase(connectionName);
 }
 
 void makeLatinLow(QChar* c, int count) {
     for (int i = 0; i < count; ++i) {
         if (c[i].decompositionTag() != QChar::NoDecomposition) {
-            c[i] = c[i].decomposition()[0];
+            QString decomposition = c[i].decomposition();
+            if (!decomposition.isEmpty() && !decomposition[0].isSpace()) {
+                // here we remove the decoration from all characters.
+                // We want "o" matching "ó" and all other variants but we
+                // do not decompose decoration only characters like "˚" where
+                // the base character is a space
+                c[i] = decomposition.at(0);
+            }
         }
         if (c[i].isUpper()) {
             c[i] = c[i].toLower();
@@ -68,19 +82,16 @@ void makeLatinLow(QChar* c, int count) {
     }
 }
 
-const QChar kSqlLikeEscapeDefault = '\0';
-
 // Compare two strings for equality where the first string is
 // a "LIKE" expression. Return true (1) if they are the same and
 // false (0) if they are different.
 // This is the original sqlite3 icuLikeCompare rewritten for QChar
 int likeCompareInner(
-    const QChar* pattern, // LIKE pattern
-    int patternSize,
-    const QChar* string, // The string to compare against
-    int stringSize,
-    const QChar esc) { // The escape character
-
+        const QChar* pattern, // LIKE pattern
+        int patternSize,
+        const QChar* string, // The string to compare against
+        int stringSize,
+        const QChar esc) { // The escape character
     int iPattern = 0; // Current index in pattern
     int iString = 0; // Current index in string
 
@@ -135,7 +146,7 @@ int likeCompareInner(
             }
         } else if (!prevEscape && uPattern == esc) {
             // Case 3.
-            prevEscape = 1;
+            prevEscape = true;
         } else {
             // Case 4.
             if (iString == stringSize) {
@@ -153,6 +164,12 @@ int likeCompareInner(
 
 #ifdef __SQLITE3__
 
+namespace {
+
+const QChar kSqlLikeEscapeDefault = '\0';
+
+} // anonymous namespace
+
 // The collating function callback is invoked with a copy of the pArg
 // application data pointer and with two strings in the encoding specified
 // by the eTextRep argument.
@@ -162,24 +179,24 @@ int likeCompareInner(
 int sqliteStringCompareUTF16(void* pArg,
                              int len1, const void* data1,
                              int len2, const void* data2) {
-    Q_UNUSED(pArg);
+    const auto* pCollator = static_cast<mixxx::StringCollator*>(pArg);
     // Construct a QString without copy
-    QString string1 = QString::fromRawData(reinterpret_cast<const QChar*>(data1),
+    QString string1 = QString::fromRawData(static_cast<const QChar*>(data1),
                                            len1 / sizeof(QChar));
-    QString string2 = QString::fromRawData(reinterpret_cast<const QChar*>(data2),
+    QString string2 = QString::fromRawData(static_cast<const QChar*>(data2),
                                            len2 / sizeof(QChar));
-    return compareLocaleAwareCaseInsensitive(string1, string2);
+    return pCollator->compare(string1, string2);
 }
 
-const char* const kLexicographicalCollationFunc = "mixxxLexicographicalCollationFunc";
+const char kLexicographicalCollationFunc[] = "mixxxLexicographicalCollationFunc";
 
 // This implements the like() SQL function. This is used by the LIKE operator.
 // The SQL statement 'A LIKE B' is implemented as 'like(B, A)', and if there is
 // an escape character, say E, it is implemented as 'like(B, A, E)'
 //static
-void sqliteLike(sqlite3_context *context,
-                                int aArgc,
-                                sqlite3_value **aArgv) {
+void sqliteLikeUtf8(sqlite3_context* context,
+        int aArgc,
+        sqlite3_value** aArgv) {
     VERIFY_OR_DEBUG_ASSERT(aArgc == 2 || aArgc == 3) {
         return;
     }
@@ -215,12 +232,12 @@ void sqliteLike(sqlite3_context *context,
 
 #endif // __SQLITE3__
 
-bool initDatabase(QSqlDatabase database) {
+bool initDatabase(const QSqlDatabase& database, mixxx::StringCollator* pCollator) {
     DEBUG_ASSERT(database.isOpen());
 #ifdef __SQLITE3__
     QVariant v = database.driver()->handle();
     VERIFY_OR_DEBUG_ASSERT(v.isValid()) {
-        kLogger.debug() << "Driver handle is invalid";
+        kLogger.warning() << "Driver handle is invalid";
         return false; // abort
     }
     if (strcmp(v.typeName(), "sqlite3*") != 0) {
@@ -229,6 +246,15 @@ bool initDatabase(QSqlDatabase database) {
                << v.typeName();
         return false; // abort
     }
+    // Ensure initialization. sqlite recommends doing this before using it
+    // and might become required in future versions
+    int rc = sqlite3_initialize();
+    VERIFY_OR_DEBUG_ASSERT(rc == SQLITE_OK) {
+        kLogger.warning()
+            << "sqlite3_initialize failed with the code: "
+            << rc;
+    }
+
     // v.data() returns a pointer to the handle
     sqlite3* handle = *static_cast<sqlite3**>(v.data());
     VERIFY_OR_DEBUG_ASSERT(handle != nullptr) {
@@ -241,7 +267,7 @@ bool initDatabase(QSqlDatabase database) {
                     handle,
                     kLexicographicalCollationFunc,
                     SQLITE_UTF16,
-                    nullptr,
+                    pCollator,
                     sqliteStringCompareUTF16);
     VERIFY_OR_DEBUG_ASSERT(result == SQLITE_OK) {
         kLogger.warning()
@@ -250,13 +276,14 @@ bool initDatabase(QSqlDatabase database) {
     }
 
     result = sqlite3_create_function(
-                    handle,
-                    "like",
-                    2,
-                    SQLITE_ANY,
-                    nullptr,
-                    sqliteLike,
-                    nullptr, nullptr);
+            handle,
+            "like",
+            2,
+            SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+            nullptr,
+            sqliteLikeUtf8,
+            nullptr,
+            nullptr);
     VERIFY_OR_DEBUG_ASSERT(result == SQLITE_OK) {
         kLogger.warning()
                 << "Failed to install custom 2-arg LIKE function for SQLite3:"
@@ -264,18 +291,22 @@ bool initDatabase(QSqlDatabase database) {
     }
 
     result = sqlite3_create_function(
-                    handle,
-                    "like",
-                    3,
-                    SQLITE_UTF8, // No conversion, Data is stored as UTF8
-                    nullptr,
-                    sqliteLike,
-                    nullptr, nullptr);
+            handle,
+            "like",
+            3, // 3rd arg = ESCAPE
+            SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+            nullptr,
+            sqliteLikeUtf8,
+            nullptr,
+            nullptr);
     VERIFY_OR_DEBUG_ASSERT(result == SQLITE_OK) {
         kLogger.warning()
                 << "Failed to install custom 3-arg LIKE function for SQLite3:"
                 << result;
     }
+#else
+    Q_UNUSED(database);
+    Q_UNUSED(pCollator);
 #endif // __SQLITE3__
     return true;
 }
@@ -296,13 +327,15 @@ DbConnection::DbConnection(
 
 DbConnection::~DbConnection() {
     close();
-    removeDatabase(m_sqlDatabase);
+    removeDatabase(&m_sqlDatabase);
 }
 
 bool DbConnection::open() {
-    kLogger.debug()
-            << "Opening database connection"
-            << *this;
+    if (kLogger.debugEnabled()) {
+        kLogger.debug()
+                << "Opening database connection"
+                << *this;
+    }
     if (!m_sqlDatabase.open()) {
         kLogger.warning()
                 << "Failed to open database connection"
@@ -310,7 +343,7 @@ bool DbConnection::open() {
                 << m_sqlDatabase.lastError();
         return false; // abort
     }
-    if (!initDatabase(m_sqlDatabase)) {
+    if (!initDatabase(m_sqlDatabase, &m_collator)) {
         kLogger.warning()
                 << "Failed to initialize database connection"
                 << *this;
@@ -330,9 +363,11 @@ void DbConnection::close() {
                 << "Rolled back open transaction before closing database connection:"
                 << *this;
         }
-        kLogger.debug()
-            << "Closing database connection:"
-            << *this;
+        if (kLogger.debugEnabled()) {
+            kLogger.debug()
+                    << "Closing database connection:"
+                    << *this;
+        }
         m_sqlDatabase.close();
     }
 }
@@ -340,7 +375,7 @@ void DbConnection::close() {
 //static
 QString DbConnection::collateLexicographically(const QString& orderByQuery) {
 #ifdef __SQLITE3__
-        return orderByQuery + QString(" COLLATE %1").arg(kLexicographicalCollationFunc);
+    return orderByQuery + QStringLiteral(" COLLATE ") + kLexicographicalCollationFunc;
 #else
         return orderByQuery;
 #endif //  __SQLITE3__
@@ -357,6 +392,11 @@ int DbConnection::likeCompareLatinLow(
             pattern->data(), pattern->length(),
             string->data(), string->length(),
             esc);
+}
+
+//static
+void DbConnection::makeStringLatinLow(QString* string) {
+    makeLatinLow(string->data(), string->length());
 }
 
 QDebug operator<<(QDebug debug, const DbConnection& connection) {

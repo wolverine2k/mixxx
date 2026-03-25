@@ -1,11 +1,12 @@
 #include "util/battery/batterymac.h"
 
 #include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/ps/IOPowerSources.h>
 #include <IOKit/ps/IOPSKeys.h>
+#include <IOKit/ps/IOPowerSources.h>
 
 #include <QtDebug>
 
+#include "moc_batterymac.cpp"
 #include "util/mac.h"
 
 BatteryMac::BatteryMac(QObject* pParent)
@@ -16,7 +17,7 @@ BatteryMac::~BatteryMac() {
 }
 
 void BatteryMac::read() {
-    m_iMinutesLeft = 0;
+    m_iMinutesLeft = Battery::TIME_UNKNOWN;
     m_dPercentage = 0.0;
     m_chargingState = Battery::UNKNOWN;
 
@@ -28,7 +29,6 @@ void BatteryMac::read() {
     CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerInfo);
 
     if (powerSources == nullptr) {
-        CFRelease(powerSources);
         return;
     }
 
@@ -126,7 +126,7 @@ void BatteryMac::read() {
             m_chargingState = DISCHARGING;
         }
 
-        if (minutes_left != -1) {
+        if (minutes_left >= 0) {
             m_iMinutesLeft = minutes_left;
         }
 

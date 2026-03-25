@@ -1,11 +1,11 @@
-#ifndef ENGINECOMPRESSOR_H
-#define ENGINECOMPRESSOR_H
+#pragma once
+#include <QString>
 
 #include "util/types.h"
 
 class EngineSideChainCompressor {
   public:
-    EngineSideChainCompressor(const char* group);
+    EngineSideChainCompressor(const QString& group);
     virtual ~EngineSideChainCompressor() { };
 
     void setParameters(CSAMPLE threshold, CSAMPLE strength,
@@ -40,17 +40,15 @@ class EngineSideChainCompressor {
         calculateRates();
     }
 
-
-    // Before calling processKey on multiple channels, first call clearKeys to
-    // clear state from the last round of compressor gain calculation.
-    void clearKeys();
+    /// Forces the above threshold flag to the given value without calculations
+    void setAboveThreshold(bool value);
 
     // Every loop, before calling process, first call processKey to feed
     // the compressor the input key signal.  It is safe to call this function
     // multiple times for multiple keys, however they will not be summed together
     // so compression will not be triggered unless at least one buffer would
     // have triggered alone.
-    void processKey(const CSAMPLE* pIn, const int iBufferSize);
+    void processKey(const CSAMPLE* pIn, const std::size_t bufferSize);
 
     // Calculates a new gain value based on the current compression ratio
     // over the given number of frames and whether the current input is above threshold.
@@ -83,5 +81,3 @@ class EngineSideChainCompressor {
     CSAMPLE m_attackPerFrame;
     CSAMPLE m_decayPerFrame;
 };
-
-#endif

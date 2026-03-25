@@ -1,17 +1,19 @@
 #include <gtest/gtest.h>
+#include <textidentificationframe.h>
+#include <tstring.h>
 
-#include "track/trackmetadatataglib.h"
-#include "util/memory.h"
-
-#include <taglib/tstring.h>
-#include <taglib/textidentificationframe.h>
 #include <QtDebug>
+#include <memory>
+
+#include "track/bpm.h"
+#include "track/taglib/trackmetadata.h"
+#include "track/taglib/trackmetadata_common.h"
 
 namespace {
 
 class MetadataTest : public testing::Test {
   protected:
-    double parseBpm(QString inputValue, bool expectedResult, double expectedValue) {
+    double parseBpm(const QString& inputValue, bool expectedResult, double expectedValue) {
         //qDebug() << "parseBpm" << inputValue << expectedResult << expectedValue;
 
         bool actualResult;
@@ -28,13 +30,11 @@ class MetadataTest : public testing::Test {
     }
 
     void normalizeBpm(double normalizedValue) {
-        mixxx::Bpm normalizedBpm(normalizedValue);
-        normalizedBpm.normalizeValue(); // re-normalize
         // Expected: Re-normalization does not change the value
         // that should already be normalized.
-        EXPECT_EQ(normalizedBpm.getValue(), normalizedValue);
+        EXPECT_EQ(normalizedValue, mixxx::Bpm::normalizeValue(normalizedValue));
     }
-    
+
     void readBPMFromId3(const char* inputValue, double expectedValue) {
         TagLib::ID3v2::Tag tag;
         tag.header()->setMajorVersion(3);
@@ -48,9 +48,12 @@ class MetadataTest : public testing::Test {
         pFrame.release();
 
         mixxx::TrackMetadata trackMetadata;
-        mixxx::taglib::readTrackMetadataFromID3v2Tag(&trackMetadata, tag);        
+        // Both resetMissingTagMetadata = false/true have the same effect
+        constexpr auto resetMissingTagMetadata = false;
+        mixxx::taglib::id3v2::importTrackMetadataFromTag(
+                &trackMetadata, tag, resetMissingTagMetadata);
 
-        EXPECT_DOUBLE_EQ(expectedValue,trackMetadata.getBpm().getValue());
+        EXPECT_DOUBLE_EQ(expectedValue, trackMetadata.getTrackInfo().getBpm().value());
     }
 };
 
@@ -126,14 +129,17 @@ TEST_F(MetadataTest, ID3v2Year) {
             tag.header()->setMajorVersion(majorVersion);
             {
                 mixxx::TrackMetadata trackMetadata;
-                trackMetadata.setYear(year);
-                mixxx::taglib::writeTrackMetadataIntoID3v2Tag(&tag, trackMetadata);
+                trackMetadata.refTrackInfo().setYear(year);
+                mixxx::taglib::id3v2::exportTrackMetadataIntoTag(&tag, trackMetadata);
             }
             mixxx::TrackMetadata trackMetadata;
-            mixxx::taglib::readTrackMetadataFromID3v2Tag(&trackMetadata, tag);
+            // Both resetMissingTagMetadata = false/true have the same effect
+            constexpr auto resetMissingTagMetadata = false;
+            mixxx::taglib::id3v2::importTrackMetadataFromTag(
+                    &trackMetadata, tag, resetMissingTagMetadata);
             if (4 > majorVersion) {
                 // ID3v2.3.0: parsed + formatted
-                const QString actualYear(trackMetadata.getYear());
+                const QString actualYear(trackMetadata.getTrackInfo().getYear());
                 const QDate expectedDate(mixxx::TrackMetadata::parseDate(year));
                 if (expectedDate.isValid()) {
                     // Only the date part can be stored in an ID3v2.3.0 tag
@@ -144,7 +150,7 @@ TEST_F(MetadataTest, ID3v2Year) {
                 }
             } else {
                 // ID3v2.4.0: currently unverified/unmodified
-                EXPECT_EQ(year, trackMetadata.getYear());
+                EXPECT_EQ(year, trackMetadata.getTrackInfo().getYear());
             }
         }
     }

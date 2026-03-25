@@ -1,32 +1,9 @@
-/***************************************************************************
-                          controlpotmeter.h  -  description
-                             -------------------
-    begin                : Wed Feb 20 2002
-    copyright            : (C) 2002 by Tue and Ken Haste Andersen
-    email                :
- ***************************************************************************/
+#pragma once
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
-#ifndef CONTROLPOTMETER_H
-#define CONTROLPOTMETER_H
-
-#include "preferences/usersettings.h"
 #include "control/controlobject.h"
-
-/**
-  *@author Tue and Ken Haste Andersen
-  */
-
-class ControlPushButton;
-class ControlProxy;
+#include "control/controlproxy.h"
+#include "control/controlpushbutton.h"
+#include "preferences/usersettings.h"
 
 class PotmeterControls : public QObject {
     Q_OBJECT
@@ -41,6 +18,8 @@ class PotmeterControls : public QObject {
     void setSmallStepCount(int count) {
         m_smallStepCount = count;
     }
+
+    void addAlias(const ConfigKey& key);
 
   public slots:
     // Increases the value.
@@ -63,9 +42,20 @@ class PotmeterControls : public QObject {
     void toggleValue(double);
     // Toggles the value between -1.0 and 0.0.
     void toggleMinusValue(double);
+    void setIsDefault(bool isDefault);
 
   private:
-    ControlProxy* m_pControl;
+    ControlProxy m_control;
+    ControlPushButton m_controlUp;
+    ControlPushButton m_controlDown;
+    ControlPushButton m_controlUpSmall;
+    ControlPushButton m_controlDownSmall;
+    ControlPushButton m_controlSetDefault;
+    ControlPushButton m_controlSetZero;
+    ControlPushButton m_controlSetOne;
+    ControlPushButton m_controlSetMinusOne;
+    ControlPushButton m_controlToggle;
+    ControlPushButton m_controlMinusToggle;
     int m_stepCount;
     double m_smallStepCount;
 };
@@ -73,13 +63,15 @@ class PotmeterControls : public QObject {
 class ControlPotmeter : public ControlObject {
     Q_OBJECT
   public:
-    ControlPotmeter(ConfigKey key, double dMinValue = 0.0, double dMaxValue = 1.0,
-                    bool allowOutOfBounds = false,
-                    bool bIgnoreNops = true,
-                    bool bTrack = false,
-                    bool bPersist = false,
-                    double defaultValue = 0.0);
-    virtual ~ControlPotmeter();
+    ControlPotmeter(const ConfigKey& key,
+            double dMinValue = 0.0,
+            double dMaxValue = 1.0,
+            bool allowOutOfBounds = false,
+            bool bIgnoreNops = true,
+            bool bTrack = false,
+            bool bPersist = false,
+            double defaultValue = 0.0);
+    ~ControlPotmeter() override = default;
 
     // Sets the step count of the associated PushButtons.
     void setStepCount(int count);
@@ -91,9 +83,16 @@ class ControlPotmeter : public ControlObject {
     // when calling this method
     void setRange(double dMinValue, double dMaxValue, bool allowOutOfBounds);
 
+    void addAlias(const ConfigKey& key) {
+        ControlObject::addAlias(key);
+        m_controls.addAlias(key);
+    };
+
+  private slots:
+    // Used to check if the current control value matches the default value.
+    void privateValueChanged(double dValue, QObject* pSender);
+
   protected:
     bool m_bAllowOutOfBounds;
     PotmeterControls m_controls;
 };
-
-#endif

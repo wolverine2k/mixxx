@@ -1,20 +1,25 @@
 #include "util/battery/battery.h"
 
+#include <chrono>
+
+#include "moc_battery.cpp"
+
 // Do not include platform-specific battery implementation unless we are built
 // with battery support (__BATTERY__).
 #ifdef __BATTERY__
-#ifdef Q_OS_LINUX
-#include "util/battery/batterylinux.h"
-#elif defined(Q_OS_WIN)
+#if defined(_WIN32)
 #include "util/battery/batterywindows.h"
-#elif defined(Q_OS_MAC)
+#elif defined(__APPLE__)
 #include "util/battery/batterymac.h"
+#elif __LINUX__
+#include "util/battery/batterylinux.h"
 #endif
 #endif
 #include "util/math.h"
 
-// interval (in ms) of the timer which calls update()
-const int kiUpdateInterval = 5000;
+using namespace std::chrono_literals;
+// interval of the timer which calls update()
+static constexpr std::chrono::milliseconds kBatteryUpdateInterval = 5000ms;
 
 Battery::Battery(QObject* parent)
         : QObject(parent),
@@ -22,21 +27,21 @@ Battery::Battery(QObject* parent)
           m_dPercentage(0.0),
           m_iMinutesLeft(0),
           m_timer(this) {
-    connect(&m_timer, SIGNAL(timeout()), this, SLOT(update()));
-    m_timer.start(mixxx::Duration::fromMillis(kiUpdateInterval));
-}
-
-Battery::~Battery() {
+    connect(&m_timer, &QTimer::timeout, this, &Battery::update);
+    m_timer.start(kBatteryUpdateInterval);
 }
 
 Battery* Battery::getBattery(QObject* parent) {
 #ifdef __BATTERY__
-#ifdef Q_OS_LINUX
-    return new BatteryLinux(parent);
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
     return new BatteryWindows(parent);
 #elif defined(Q_OS_MAC)
     return new BatteryMac(parent);
+#elif __LINUX__
+    return new BatteryLinux(parent);
+#else
+    Q_UNUSED(parent);
+    return nullptr;
 #endif
 #else
     Q_UNUSED(parent);
@@ -45,7 +50,7 @@ Battery* Battery::getBattery(QObject* parent) {
 }
 
 void Battery::update() {
-    const double kPercentageEpsilon = 0.1;
+    constexpr double kPercentageEpsilon = 0.1;
     double lastPercentage = m_dPercentage;
     int lastMinutesLeft = m_iMinutesLeft;
     ChargingState lastChargingState = m_chargingState;
@@ -53,6 +58,6 @@ void Battery::update() {
     if (fabs(lastPercentage - m_dPercentage) > kPercentageEpsilon ||
         lastChargingState != m_chargingState ||
         lastMinutesLeft != m_iMinutesLeft) {
-        emit(stateChanged());
+        emit stateChanged();
     }
 }

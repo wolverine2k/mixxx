@@ -1,5 +1,4 @@
-#ifndef MIXXX_SOUNDSOURCEMODPLUG_H
-#define MIXXX_SOUNDSOURCEMODPLUG_H
+#pragma once
 
 #include "sources/soundsourceprovider.h"
 
@@ -14,49 +13,53 @@ namespace mixxx {
 // Class for reading tracker files using libmodplug.
 // The whole file is decoded at once and saved
 // in RAM to allow seeking and smooth operation in Mixxx.
-class SoundSourceModPlug: public mixxx::SoundSource {
-public:
-     static constexpr SINT kChannelCount = kChannelCountStereo;
-     static constexpr SINT kSamplingRate = 44100;
-     static constexpr SINT kBitsPerSample = 16;
+class SoundSourceModPlug final : public SoundSource {
+  public:
+    static constexpr auto kChannelCount = mixxx::audio::ChannelCount::stereo();
+    static constexpr auto kSampleRate = mixxx::audio::SampleRate(44100);
+    static constexpr int kBitsPerSample = 16;
 
     // apply settings for decoding
     static void configure(unsigned int bufferSizeLimit,
-            const ModPlug::ModPlug_Settings &settings);
+            const ModPlug::ModPlug_Settings& settings);
 
     explicit SoundSourceModPlug(const QUrl& url);
     ~SoundSourceModPlug() override;
 
-    Result parseTrackMetadataAndCoverArt(
+    std::pair<ImportResult, QDateTime> importTrackMetadataAndCoverImage(
             TrackMetadata* pTrackMetadata,
-            QImage* pCoverArt) const override;
+            QImage* pCoverArt,
+            bool resetMissingTagMetadata) const override;
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            const WritableSampleFrames& sampleFrames) override;
 
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer) override;
-
-private:
-    OpenResult tryOpen(const AudioSourceConfig& audioSrcCfg) override;
+  private:
+    OpenResult tryOpen(
+            OpenMode mode,
+            const OpenParams& params) override;
 
     static unsigned int s_bufferSizeLimit; // max track buffer length (bytes)
 
-    ModPlug::ModPlugFile *m_pModFile; // modplug file descriptor
-    QByteArray m_fileBuf; // original module file data
+    ModPlug::ModPlugFile* m_pModFile; // modplug file descriptor
+    QByteArray m_fileBuf;             // original module file data
 
-    typedef std::vector<SAMPLE> SampleBuffer;
-    SampleBuffer m_sampleBuf;
-
-    SINT m_seekPos; // current read position
+    typedef std::vector<SAMPLE> ModSampleBuffer;
+    ModSampleBuffer m_sampleBuf;
 };
 
-class SoundSourceProviderModPlug: public SoundSourceProvider {
-public:
-    QString getName() const override;
+class SoundSourceProviderModPlug : public SoundSourceProvider {
+  public:
+    static const QString kDisplayName;
 
-    QStringList getSupportedFileExtensions() const override;
+    QString getDisplayName() const override {
+        return kDisplayName;
+    }
+
+    QStringList getSupportedFileTypes() const override;
 
     SoundSourcePointer newSoundSource(const QUrl& url) override {
         return newSoundSourceFromUrl<SoundSourceModPlug>(url);
@@ -64,5 +67,3 @@ public:
 };
 
 } // namespace mixxx
-
-#endif // MIXXX_SOUNDSOURCEMODPLUG_H

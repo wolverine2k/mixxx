@@ -1,6 +1,7 @@
 #include "controllers/delegates/midibytedelegate.h"
-#include "controllers/midi/midimessage.h"
+
 #include "controllers/midi/midiutils.h"
+#include "moc_midibytedelegate.cpp"
 #include "widget/hexspinbox.h"
 
 MidiByteDelegate::MidiByteDelegate(QObject* pParent)
@@ -15,9 +16,12 @@ QWidget* MidiByteDelegate::createEditor(QWidget* parent,
                                         const QModelIndex& index) const {
     Q_UNUSED(option);
     Q_UNUSED(index);
-    HexSpinBox* pSpinBox = new HexSpinBox(parent);
-    pSpinBox->setRange(0x00, 0x7F);
-    return pSpinBox;
+    if (!index.data(Qt::EditRole).isNull()) {
+        HexSpinBox* pSpinBox = new HexSpinBox(parent);
+        pSpinBox->setRange(0x00, 0x7F);
+        return pSpinBox;
+    }
+    return nullptr;
 }
 
 QString MidiByteDelegate::displayText(const QVariant& value,
@@ -30,8 +34,8 @@ QString MidiByteDelegate::displayText(const QVariant& value,
 void MidiByteDelegate::setEditorData(QWidget* editor,
                                      const QModelIndex& index) const {
     int control = index.data(Qt::EditRole).toInt();
-    HexSpinBox* pSpinBox = dynamic_cast<HexSpinBox*>(editor);
-    if (pSpinBox == NULL) {
+    HexSpinBox* pSpinBox = qobject_cast<HexSpinBox*>(editor);
+    if (pSpinBox == nullptr) {
         return;
     }
     pSpinBox->setValue(control);
@@ -40,8 +44,8 @@ void MidiByteDelegate::setEditorData(QWidget* editor,
 void MidiByteDelegate::setModelData(QWidget* editor,
                                     QAbstractItemModel* model,
                                     const QModelIndex& index) const {
-    HexSpinBox* pSpinBox = dynamic_cast<HexSpinBox*>(editor);
-    if (pSpinBox == NULL) {
+    HexSpinBox* pSpinBox = qobject_cast<HexSpinBox*>(editor);
+    if (pSpinBox == nullptr) {
         return;
     }
     model->setData(index, pSpinBox->value(), Qt::EditRole);

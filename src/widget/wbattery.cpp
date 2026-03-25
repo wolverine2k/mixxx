@@ -1,16 +1,22 @@
+#include "widget/wbattery.h"
+
 #include <QStyleOption>
 #include <QStylePainter>
 
-#include "widget/wbattery.h"
+#include "moc_wbattery.cpp"
+#include "skin/legacy/skincontext.h"
 #include "util/battery/battery.h"
 #include "util/math.h"
 
 WBattery::WBattery(QWidget* parent)
         : WWidget(parent),
           m_pBattery(Battery::getBattery(this)) {
+    setVisible(false);
     if (m_pBattery) {
-        connect(m_pBattery.data(), SIGNAL(stateChanged()),
-                this, SLOT(update()));
+        connect(m_pBattery.data(),
+                &Battery::stateChanged,
+                this,
+                &WBattery::slotStateChanged);
     }
 }
 
@@ -18,25 +24,17 @@ void WBattery::setup(const QDomNode& node, const SkinContext& context) {
     QDomElement backPath = context.selectElement(node, "BackPath");
     if (!backPath.isNull()) {
         setPixmap(&m_pPixmapBack,
-                  context.getPixmapSource(backPath),
-                  context.selectScaleMode(backPath, Paintable::TILE),
-                  context.getScaleFactor());
-    }
-
-    QDomElement unknownPath = context.selectElement(node, "PixmapUnknown");
-    if (!unknownPath.isNull()) {
-        setPixmap(&m_pPixmapUnknown,
-                  context.getPixmapSource(unknownPath),
-                  context.selectScaleMode(unknownPath, Paintable::TILE),
-                  context.getScaleFactor());
+                context.getPixmapSource(backPath),
+                context.selectScaleMode(backPath, Paintable::DrawMode::Tile),
+                context.getScaleFactor());
     }
 
     QDomElement chargedPath = context.selectElement(node, "PixmapCharged");
     if (!chargedPath.isNull()) {
         setPixmap(&m_pPixmapCharged,
-                  context.getPixmapSource(chargedPath),
-                  context.selectScaleMode(chargedPath, Paintable::TILE),
-                  context.getScaleFactor());
+                context.getPixmapSource(chargedPath),
+                context.selectScaleMode(chargedPath, Paintable::DrawMode::Tile),
+                context.getScaleFactor());
     }
 
     int numberStates = context.selectInt(node, "NumberStates");
@@ -52,7 +50,7 @@ void WBattery::setup(const QDomNode& node, const SkinContext& context) {
         // TODO(XXX) inline SVG support via context.getPixmapSource.
         QString chargingPath = context.nodeToString(pixmapsCharging);
         Paintable::DrawMode mode = context.selectScaleMode(pixmapsCharging,
-                                                           Paintable::TILE);
+                Paintable::DrawMode::Tile);
         for (int i = 0; i < m_chargingPixmaps.size(); ++i) {
             PixmapSource source = context.getPixmapSource(chargingPath.arg(i));
             setPixmap(&m_chargingPixmaps[i], source, mode, context.getScaleFactor());
@@ -64,7 +62,7 @@ void WBattery::setup(const QDomNode& node, const SkinContext& context) {
         // TODO(XXX) inline SVG support via context.getPixmapSource.
         QString dischargingPath = context.nodeToString(pixmapsDischarging);
         Paintable::DrawMode mode = context.selectScaleMode(pixmapsDischarging,
-                                                           Paintable::TILE);
+                Paintable::DrawMode::Tile);
         for (int i = 0; i < m_dischargingPixmaps.size(); ++i) {
             PixmapSource source = context.getPixmapSource(dischargingPath.arg(i));
             setPixmap(&m_dischargingPixmaps[i], source, mode, context.getScaleFactor());
@@ -86,18 +84,26 @@ QString formatMinutes(int minutes) {
 
 int pixmapIndexFromPercentage(double dPercentage, int numPixmaps) {
     // See WDisplay::getActivePixmapIndex for more info on this.
-    int result = static_cast<int>(dPercentage * numPixmaps - 0.00001);
+    int result = static_cast<int>(dPercentage / 100.0 * numPixmaps);
     result = math_min(numPixmaps - 1, math_max(0, result));
     return result;
 }
 
-void WBattery::update() {
+QString WBattery::formatTooltip(double dPercentage) {
+    return QString::number(dPercentage, 'f', 0) + QStringLiteral("%");
+}
+
+void WBattery::slotStateChanged() {
     int minutesLeft = m_pBattery ? m_pBattery->getMinutesLeft() : 0;
     Battery::ChargingState chargingState = m_pBattery ?
             m_pBattery->getChargingState() : Battery::UNKNOWN;
     double dPercentage = m_pBattery ? m_pBattery->getPercentage() : 0;
 
-    m_pCurrentPixmap.clear();
+    if (chargingState != Battery::UNKNOWN) {
+        setBaseTooltip(formatTooltip(dPercentage));
+    }
+
+    m_pCurrentPixmap.reset();
     switch (chargingState) {
         case Battery::CHARGING:
             if (!m_chargingPixmaps.isEmpty()) {
@@ -105,10 +111,8 @@ void WBattery::update() {
                     pixmapIndexFromPercentage(dPercentage,
                                               m_chargingPixmaps.size())];
             }
-            if (minutesLeft == -1) {
-                setBaseTooltip(tr("Time until charged unknown."));
-            } else {
-                setBaseTooltip(tr("Time until charged: %1")
+            if (minutesLeft != Battery::TIME_UNKNOWN) {
+                appendBaseTooltip("\n" + tr("Time until charged: %1")
                                .arg(formatMinutes(minutesLeft)));
             }
             break;
@@ -118,23 +122,19 @@ void WBattery::update() {
                     pixmapIndexFromPercentage(dPercentage,
                                               m_dischargingPixmaps.size())];
             }
-            if (minutesLeft == -1) {
-                setBaseTooltip(tr("Time left unknown."));
-            } else {
-                setBaseTooltip(tr("Time left: %1")
+            if (minutesLeft != Battery::TIME_UNKNOWN) {
+                appendBaseTooltip("\n" + tr("Time left: %1")
                                .arg(formatMinutes(minutesLeft)));
             }
             break;
         case Battery::CHARGED:
             m_pCurrentPixmap = m_pPixmapCharged;
-            setBaseTooltip(tr("Battery fully charged."));
+            appendBaseTooltip("\n" + tr("Battery fully charged."));
             break;
-        case Battery::UNKNOWN:
         default:
-            m_pCurrentPixmap = m_pPixmapUnknown;
-            setBaseTooltip(tr("Battery status unknown."));
             break;
     }
+    setVisible(chargingState != Battery::UNKNOWN);
 
     // call parent's update() to show changes, this should call
     // QWidget::update()
@@ -144,11 +144,13 @@ void WBattery::update() {
 void WBattery::setPixmap(PaintablePointer* ppPixmap, const PixmapSource& source,
                          Paintable::DrawMode mode, double scaleFactor) {
     PaintablePointer pPixmap = WPixmapStore::getPaintable(source, mode, scaleFactor);
-    if (pPixmap.isNull() || pPixmap->isNull()) {
-        qDebug() << this << "Error loading pixmap:" << source.getPath();
+    if (!pPixmap || pPixmap->isNull()) {
+        qDebug() << "WBattery: Error loading pixmap:" << source.getPath();
     } else {
         *ppPixmap = pPixmap;
-        setFixedSize(pPixmap->size());
+        if (mode == Paintable::DrawMode::Fixed) {
+            setFixedSize(pPixmap->size());
+        }
     }
 }
 
@@ -159,10 +161,10 @@ void WBattery::paintEvent(QPaintEvent* /*unused*/) {
     p.drawPrimitive(QStyle::PE_Widget, option);
 
     if (m_pPixmapBack) {
-        m_pPixmapBack->draw(0, 0, &p);
+        m_pPixmapBack->draw(rect(), &p);
     }
 
     if (m_pCurrentPixmap) {
-        m_pCurrentPixmap->draw(0, 0, &p);
+        m_pCurrentPixmap->draw(rect(), &p);
     }
 }

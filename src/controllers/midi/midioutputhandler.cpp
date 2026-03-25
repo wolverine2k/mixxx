@@ -1,31 +1,25 @@
-/**
- * @file midioutputhandler.cpp
- * @author Sean Pappalardo spappalardo@mixxx.org
- * @date Tue 11 Feb 2012
- * @brief MIDI output mapping handler
- *
- */
+#include "controllers/midi/midioutputhandler.h"
 
 #include <QtDebug>
 
-#include "controllers/midi/midioutputhandler.h"
 #include "controllers/midi/midicontroller.h"
-#include "controllers/controllerdebug.h"
-#include "control/controlobject.h"
+#include "moc_midioutputhandler.cpp"
 
 MidiOutputHandler::MidiOutputHandler(MidiController* controller,
-                                     const MidiOutputMapping& mapping)
+        const MidiOutputMapping& mapping,
+        const RuntimeLoggingCategory& logger)
         : m_pController(controller),
           m_mapping(mapping),
-          m_cos(mapping.controlKey, this),
-          m_lastVal(-1) { // -1 = virgin
-    m_cos.connectValueChanged(SLOT(controlChanged(double)));
+          m_cos(mapping.controlKey, this, ControlFlag::NoAssertIfMissing),
+          m_lastVal(-1), // arbitrary invalid MIDI value
+          m_logger(logger) {
+    m_cos.connectValueChanged(this, &MidiOutputHandler::controlChanged);
 }
 
 MidiOutputHandler::~MidiOutputHandler() {
     ConfigKey cKey = m_cos.getKey();
-    controllerDebug(QString("Destroying static MIDI output handler on %1 for %2,%3")
-                .arg(m_pController->getName(), cKey.group, cKey.item));
+    qCDebug(m_logger) << QString("Destroying static MIDI output handler on %1 for %2,%3")
+                                 .arg(m_pController->getName(), cKey.group, cKey.item);
 }
 
 bool MidiOutputHandler::validate() {
@@ -51,11 +45,11 @@ void MidiOutputHandler::controlChanged(double value) {
     }
 
     if (!m_pController->isOpen()) {
-        qWarning() << "MIDI device" << m_pController->getName() << "not open for output!";
+        qCWarning(m_logger) << "MIDI device" << m_pController->getName() << "not open for output!";
     } else if (byte3 != 0xFF) {
-        controllerDebug("sending MIDI bytes:" << m_mapping.output.status
-                     << "," << m_mapping.output.control << ","
-                     << byte3);
+        qCDebug(m_logger) << "sending MIDI bytes:" << m_mapping.output.status
+                          << "," << m_mapping.output.control << ","
+                          << byte3;
         m_pController->sendShortMsg(m_mapping.output.status,
                                     m_mapping.output.control, byte3);
         m_lastVal = static_cast<int>(byte3);

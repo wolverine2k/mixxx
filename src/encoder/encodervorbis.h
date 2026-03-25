@@ -1,34 +1,30 @@
-/***************************************************************************
-                     encodervorbis.h  -  vorbis encoder for mixxx
-                             -------------------
-    copyright            : (C) 2007 by Wesley Stessens
-                           (C) 1994 by Xiph.org (encoder example)
-                           (C) 1994 Tobias Rafreider (broadcast and recording fixes)
- ***************************************************************************/
+#pragma once
 
+#include <vorbis/codec.h>
 
-#ifndef ENCODERVORBIS_H
-#define ENCODERVORBIS_H
+#include <QFile>
 
-// this also includes vorbis/codec.h
-#include <vorbis/vorbisenc.h>
-
-#include "util/types.h"
 #include "encoder/encoder.h"
-#include "track/track.h"
+#include "track/track_decl.h"
+#include "util/types.h"
 
 class EncoderCallback;
 
+/// Vorbis encoder
 class EncoderVorbis : public Encoder {
   public:
-    static const int MONO_BITRATE_TRESHOLD;
-  
-    EncoderVorbis(EncoderCallback* pCallback=nullptr);
-    virtual ~EncoderVorbis();
+    static const int MONO_BITRATE_THRESHOLD;
 
-    int initEncoder(int samplerate, QString errorMessage) override;
-    void encodeBuffer(const CSAMPLE *samples, const int size) override;
-    void updateMetaData(const QString& artist, const QString& title, const QString& album) override;
+    EncoderVorbis(EncoderCallback* pCallback = nullptr);
+    ~EncoderVorbis() override;
+
+    int initEncoder(mixxx::audio::SampleRate sampleRate,
+            QString* pUserErrorMessage) override;
+    void encodeBuffer(const CSAMPLE* samples, const std::size_t bufferSize) override;
+    void updateMetaData(const QString& artist,
+            const QString& title,
+            const QString& album,
+            std::chrono::seconds timecode = {}) override;
     void flush() override;
     void setEncoderSettings(const EncoderSettings& settings) override;
 
@@ -58,6 +54,6 @@ class EncoderVorbis : public Encoder {
     int m_bitrate;
     int m_channels;
     QFile m_file;
-};
 
-#endif
+    QStringList m_trackList;
+};

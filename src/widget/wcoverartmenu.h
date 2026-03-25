@@ -1,13 +1,11 @@
-#ifndef WCOVERARTMENU_H
-#define WCOVERARTMENU_H
+#pragma once
 
-#include <QAction>
 #include <QMenu>
-#include <QWidget>
-#include <QPixmap>
 
-#include "track/track.h"
 #include "library/coverart.h"
+#include "library/export/coverartcopyworker.h"
+
+class QAction;
 
 // This class implements a context-menu with all CoverArt user actions. Callers
 // must call setCoverArt before calling exec or popup. This class does
@@ -23,12 +21,18 @@ class WCoverArtMenu : public QMenu {
     void setCoverArt(const CoverInfo& coverInfo);
 
   signals:
-    void coverInfoSelected(const CoverInfo& coverInfo);
+    void coverInfoSelected(const CoverInfoRelative& coverInfo);
     void reloadCoverArt();
 
   private slots:
     void slotChange();
     void slotUnset();
+    void slotStarted();
+    void slotAskOverwrite(const QString& coverArtAbsolutePath,
+            std::promise<CoverArtCopyWorker::OverwriteAnswer>* promise);
+    void slotCoverArtCopyFailed(const QString& errorMessage);
+    void slotCoverArtUpdated(const CoverInfoRelative& coverInfo);
+    void slotFinished();
 
   private:
     void createActions();
@@ -38,6 +42,7 @@ class WCoverArtMenu : public QMenu {
     QAction* m_pUnset;
 
     CoverInfo m_coverInfo;
-};
 
-#endif // WCOVERARTMENU_H
+    QScopedPointer<CoverArtCopyWorker> m_worker;
+    bool m_isWorkerRunning;
+};

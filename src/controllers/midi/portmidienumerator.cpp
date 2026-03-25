@@ -1,27 +1,106 @@
-/**
-* @file portmidienumerator.cpp
-* @author Sean Pappalardo spappalardo@mixxx.org
-* @date Thu 15 Mar 2012
-* @brief This class handles discovery and enumeration of DJ controller devices that appear under the PortMIDI cross-platform API.
-*/
-
-#include <portmidi.h>
-#include <QRegExp>
-
 #include "controllers/midi/portmidienumerator.h"
 
+#include <portmidi.h>
+
+#include <QRegularExpression>
+
+#include "controllers/defs_controllers.h"
 #include "controllers/midi/portmidicontroller.h"
+#include "moc_portmidienumerator.cpp"
 #include "util/cmdlineargs.h"
 
-bool shouldBlacklistDevice(const PmDeviceInfo* device) {
-    QString deviceName = device->name;
-    // In developer mode we show the MIDI Through Port, otherwise blacklist it
+namespace {
+
+bool recognizeDevice(const PmDeviceInfo& deviceInfo, UserSettingsPointer pConfig) {
+    // In developer mode we show the MIDI Through Port, otherwise ignore it
     // since it routinely causes trouble.
-    return !CmdlineArgs::Instance().getDeveloper() &&
-            deviceName.startsWith("Midi Through Port", Qt::CaseInsensitive);
+    return CmdlineArgs::Instance().getDeveloper() ||
+            pConfig->getValue(kMidiThroughCfgKey, false) ||
+            !QLatin1String(deviceInfo.name)
+                     .startsWith(kMidiThroughPortPrefix, Qt::CaseInsensitive);
 }
 
-PortMidiEnumerator::PortMidiEnumerator() : MidiEnumerator() {
+// Some platforms format MIDI device names as "deviceName MIDI ###" where
+// ### is the instance # of the device. Therefore we want to link two
+// devices that have an equivalent "deviceName" and ### section.
+const QRegularExpression kMidiDeviceNameRegex(QStringLiteral("^(.*) MIDI (\\d+)( .*)?$"));
+
+const QRegularExpression kInputRegex(QStringLiteral("^(.*) in( \\d+)?( .*)?$"),
+        QRegularExpression::CaseInsensitiveOption);
+const QRegularExpression kOutputRegex(QStringLiteral("^(.*) out( \\d+)?( .*)?$"),
+        QRegularExpression::CaseInsensitiveOption);
+
+// This is a broad pattern that matches a text blob followed by a numeral
+// potentially followed by non-numeric text. The non-numeric requirement is
+// meant to avoid corner cases around devices with names like "Hercules RMX
+// 2" where we would potentially confuse the number in the device name as
+// the ordinal index of the device.
+const QRegularExpression kDeviceNameRegex(QStringLiteral("^(.*) (\\d+)( [^0-9]+)?$"));
+
+bool namesMatchRegexes(const QRegularExpression& kInputRegex,
+        const QString& input_name,
+        const QRegularExpression& kOutputRegex,
+        const QString& output_name) {
+    QRegularExpressionMatch inputMatch = kInputRegex.match(input_name);
+    if (inputMatch.hasMatch()) {
+        QString inputDeviceName = inputMatch.captured(1);
+        QString inputDeviceIndex = inputMatch.captured(2);
+        QRegularExpressionMatch outputMatch = kOutputRegex.match(output_name);
+        if (outputMatch.hasMatch()) {
+            QString outputDeviceName = outputMatch.captured(1);
+            QString outputDeviceIndex = outputMatch.captured(2);
+            if (outputDeviceName.compare(inputDeviceName, Qt::CaseInsensitive) == 0 &&
+                outputDeviceIndex == inputDeviceIndex) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool namesMatchMidiPattern(const QString& input_name,
+        const QString& output_name) {
+    return namesMatchRegexes(kMidiDeviceNameRegex, input_name, kMidiDeviceNameRegex, output_name);
+}
+
+bool namesMatchInOutPattern(const QString& input_name,
+        const QString& output_name) {
+    return namesMatchRegexes(kInputRegex, input_name, kOutputRegex, output_name);
+}
+
+bool namesMatchPattern(const QString& input_name,
+        const QString& output_name) {
+    return namesMatchRegexes(kDeviceNameRegex, input_name, kDeviceNameRegex, output_name);
+}
+
+bool namesMatchAllowableEdgeCases(const QString& input_name,
+        const QString& output_name) {
+    // Mac OS 10.12 & Korg Kaoss DJ 1.6:
+    // Korg Kaoss DJ has input 'KAOSS DJ CONTROL' and output 'KAOSS DJ SOUND'.
+    // This means it doesn't pass the shouldLinkInputToOutput test. Without an
+    // output linked, the MIDI output for the device fails, as the device is
+    // NULL in PortMidiController
+    if (input_name == "KAOSS DJ CONTROL" && output_name == "KAOSS DJ SOUND") {
+        return true;
+    }
+    // Ableton Push on Windows
+    // Shows 2 different devices for MIDI input and output.
+    if (input_name == "MIDIIN2 (Ableton Push)" && output_name == "MIDIOUT2 (Ableton Push)") {
+        return true;
+    }
+
+    // Novation Launchpad X (macOS)
+    if (input_name == "Launchpad X LPX DAW Out" && output_name == "Launchpad X LPX DAW In") {
+        return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
+PortMidiEnumerator::PortMidiEnumerator(UserSettingsPointer pConfig)
+        : m_pConfig(pConfig) {
     PmError err = Pm_Initialize();
     // Based on reading the source, it's not possible for this to fail.
     if (err != pmNoError) {
@@ -42,83 +121,10 @@ PortMidiEnumerator::~PortMidiEnumerator() {
     }
 }
 
-bool namesMatchMidiPattern(const QString input_name,
-                           const QString output_name) {
-    // Some platforms format MIDI device names as "deviceName MIDI ###" where
-    // ### is the instance # of the device. Therefore we want to link two
-    // devices that have an equivalent "deviceName" and ### section.
-    QRegExp deviceNamePattern("^(.*) MIDI (\\d+)( .*)?$");
-
-    int inputMatch = deviceNamePattern.indexIn(input_name);
-    if (inputMatch == 0) {
-        QString inputDeviceName = deviceNamePattern.cap(1);
-        QString inputDeviceIndex = deviceNamePattern.cap(2);
-        int outputMatch = deviceNamePattern.indexIn(output_name);
-        if (outputMatch == 0) {
-            QString outputDeviceName = deviceNamePattern.cap(1);
-            QString outputDeviceIndex = deviceNamePattern.cap(2);
-            if (outputDeviceName.compare(inputDeviceName, Qt::CaseInsensitive) == 0 &&
-                outputDeviceIndex == inputDeviceIndex) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-bool namesMatchInOutPattern(const QString input_name,
-                            const QString output_name) {
-    QString basePattern = "^(.*) %1 (\\d+)( .*)?$";
-    QRegExp inputPattern(basePattern.arg("in"));
-    QRegExp outputPattern(basePattern.arg("out"));
-
-    int inputMatch = inputPattern.indexIn(input_name);
-    if (inputMatch == 0) {
-        QString inputDeviceName = inputPattern.cap(1);
-        QString inputDeviceIndex = inputPattern.cap(2);
-        int outputMatch = outputPattern.indexIn(output_name);
-        if (outputMatch == 0) {
-            QString outputDeviceName = outputPattern.cap(1);
-            QString outputDeviceIndex = outputPattern.cap(2);
-            if (outputDeviceName.compare(inputDeviceName, Qt::CaseInsensitive) == 0 &&
-                outputDeviceIndex == inputDeviceIndex) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-bool namesMatchPattern(const QString input_name,
-                       const QString output_name) {
-    // This is a broad pattern that matches a text blob followed by a numeral
-    // potentially followed by non-numeric text. The non-numeric requirement is
-    // meant to avoid corner cases around devices with names like "Hercules RMX
-    // 2" where we would potentially confuse the number in the device name as
-    // the ordinal index of the device.
-    QRegExp deviceNamePattern("^(.*) (\\d+)( [^0-9]+)?$");
-
-    int inputMatch = deviceNamePattern.indexIn(input_name);
-    if (inputMatch == 0) {
-        QString inputDeviceName = deviceNamePattern.cap(1);
-        QString inputDeviceIndex = deviceNamePattern.cap(2);
-        int outputMatch = deviceNamePattern.indexIn(output_name);
-        if (outputMatch == 0) {
-            QString outputDeviceName = deviceNamePattern.cap(1);
-            QString outputDeviceIndex = deviceNamePattern.cap(2);
-            if (outputDeviceName.compare(inputDeviceName, Qt::CaseInsensitive) == 0 &&
-                outputDeviceIndex == inputDeviceIndex) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-bool shouldLinkInputToOutput(const QString input_name,
-                             const QString output_name) {
+bool shouldLinkInputToOutput(const QString& input_name,
+        const QString& output_name) {
     // Early exit.
-    if (input_name == output_name) {
+    if (input_name == output_name || namesMatchAllowableEdgeCases(input_name, output_name)) {
         return true;
     }
 
@@ -167,11 +173,12 @@ bool shouldLinkInputToOutput(const QString input_name,
     return false;
 }
 
-/** Enumerate the MIDI devices
-  * This method needs a bit of intelligence because PortMidi (and the underlying MIDI APIs) like to split
-  * output and input into separate devices. Eg. PortMidi would tell us the Hercules is two half-duplex devices.
-  * To help simplify a lot of code, we're going to aggregate these two streams into a single full-duplex device.
-  */
+/// Enumerate the MIDI devices
+/// This method needs a bit of intelligence because PortMidi (and the underlying
+/// MIDI APIs) like to split output and input into separate devices. Eg.
+/// PortMidi would tell us the Hercules is two half-duplex devices. To help
+/// simplify a lot of code, we're going to aggregate these two streams into a
+/// single full-duplex device.
 QList<Controller*> PortMidiEnumerator::queryDevices() {
     qDebug() << "Scanning PortMIDI devices:";
 
@@ -184,79 +191,79 @@ QList<Controller*> PortMidiEnumerator::queryDevices() {
 
     m_devices.clear();
 
-    const PmDeviceInfo* inputDeviceInfo = NULL;
-    const PmDeviceInfo* outputDeviceInfo = NULL;
+    const PmDeviceInfo* inputDeviceInfo = nullptr;
+    const PmDeviceInfo* outputDeviceInfo = nullptr;
     int inputDevIndex = -1;
     int outputDevIndex = -1;
     QMap<int, QString> unassignedOutputDevices;
 
     // Build a complete list of output devices for later pairing
     for (int i = 0; i < iNumDevices; i++) {
-        const PmDeviceInfo* deviceInfo = Pm_GetDeviceInfo(i);
-        if (shouldBlacklistDevice(deviceInfo)) {
+        const PmDeviceInfo* pDeviceInfo = Pm_GetDeviceInfo(i);
+        VERIFY_OR_DEBUG_ASSERT(pDeviceInfo) {
             continue;
         }
-        if (deviceInfo->output) {
-            qDebug() << " Found output device" << "#" << i << deviceInfo->name;
-            QString deviceName = deviceInfo->name;
-            unassignedOutputDevices[i] = deviceName;
+        if (!recognizeDevice(*pDeviceInfo, m_pConfig) || !pDeviceInfo->output) {
+            continue;
         }
+        qDebug() << " Found output device"
+                 << "#" << i << pDeviceInfo->name;
+        QString deviceName = pDeviceInfo->name;
+        unassignedOutputDevices[i] = deviceName;
     }
 
     // Search for input devices and pair them with output devices if applicable
     for (int i = 0; i < iNumDevices; i++) {
-        const PmDeviceInfo* deviceInfo = Pm_GetDeviceInfo(i);
-        if (shouldBlacklistDevice(deviceInfo)) {
+        const PmDeviceInfo* pDeviceInfo = Pm_GetDeviceInfo(i);
+        VERIFY_OR_DEBUG_ASSERT(pDeviceInfo) {
+            continue;
+        }
+        if (!recognizeDevice(*pDeviceInfo, m_pConfig) || !pDeviceInfo->input) {
+            // Is there a use case for output-only devices such as message
+            // displays? Then this condition has to be split and
+            // deviceInfo->output also needs to be checked and handled.
             continue;
         }
 
-        //If we found an input device
-        if (deviceInfo->input) {
-            qDebug() << " Found input device" << "#" << i << deviceInfo->name;
-            inputDeviceInfo = deviceInfo;
-            inputDevIndex = i;
+        qDebug() << " Found input device"
+                 << "#" << i << pDeviceInfo->name;
+        inputDeviceInfo = pDeviceInfo;
+        inputDevIndex = i;
 
-            //Reset our output device variables before we look for one incase we find none.
-            outputDeviceInfo = NULL;
-            outputDevIndex = -1;
+        //Reset our output device variables before we look for one in case we find none.
+        outputDeviceInfo = nullptr;
+        outputDevIndex = -1;
 
-            //Search for a corresponding output device
-            QMapIterator<int, QString> j(unassignedOutputDevices);
-            while (j.hasNext()) {
-                j.next();
+        //Search for a corresponding output device
+        QMapIterator<int, QString> j(unassignedOutputDevices);
+        while (j.hasNext()) {
+            j.next();
 
-                QString deviceName = inputDeviceInfo->name;
-                QString outputName = QString(j.value());
+            QString deviceName = inputDeviceInfo->name;
+            QString outputName = QString(j.value());
 
-                if (shouldLinkInputToOutput(deviceName, outputName)) {
-                    outputDevIndex = j.key();
-                    outputDeviceInfo = Pm_GetDeviceInfo(outputDevIndex);
+            if (shouldLinkInputToOutput(deviceName, outputName)) {
+                outputDevIndex = j.key();
+                outputDeviceInfo = Pm_GetDeviceInfo(outputDevIndex);
 
-                    unassignedOutputDevices.remove(outputDevIndex);
+                unassignedOutputDevices.remove(outputDevIndex);
 
-                    qDebug() << "    Linking to output device #" << outputDevIndex << outputName;
-                    break;
-                }
+                qDebug() << "    Linking to output device #" << outputDevIndex << outputName;
+                break;
             }
-
-            // So at this point, we either have an input-only MIDI device
-            // (outputDeviceInfo == NULL) or we've found a matching output MIDI
-            // device (outputDeviceInfo != NULL).
-
-            //.... so create our (aggregate) MIDI device!
-            PortMidiController *currentDevice = new PortMidiController(
-                inputDeviceInfo, outputDeviceInfo,
-                inputDevIndex, outputDevIndex);
-            m_devices.push_back(currentDevice);
         }
 
-        // Is there a use-case for output-only devices (such as message
-        // displays?) If so, handle them here.
+        // So at this point, we either have an input-only MIDI device
+        // (outputDeviceInfo == NULL) or we've found a matching output MIDI
+        // device (outputDeviceInfo != NULL).
 
-        //else if (deviceInfo->output) {
-        //    PortMidiController *currentDevice = new PortMidiController(deviceInfo, i);
-        //    m_devices.push_back((MidiController*)currentDevice);
-        //}
+        //.... so create our (aggregate) MIDI device!
+        PortMidiController* currentDevice =
+                new PortMidiController(inputDeviceInfo,
+                        outputDeviceInfo,
+                        inputDevIndex,
+                        outputDevIndex);
+        m_devices.push_back(currentDevice);
     }
     return m_devices;
 }

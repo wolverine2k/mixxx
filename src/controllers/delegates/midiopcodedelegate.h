@@ -1,9 +1,9 @@
-#ifndef MIDIOPCODEDELEGATE_H
-#define MIDIOPCODEDELEGATE_H
+#pragma once
 
 #include <QStyledItemDelegate>
 
 class MidiOpCodeDelegate : public QStyledItemDelegate {
+    Q_OBJECT
   public:
     MidiOpCodeDelegate(QObject* pParent);
     virtual ~MidiOpCodeDelegate();
@@ -18,5 +18,3 @@ class MidiOpCodeDelegate : public QStyledItemDelegate {
     void setModelData(QWidget* editor, QAbstractItemModel* model,
                       const QModelIndex& index) const;
 };
-
-#endif /* MIDIOPCODEDELEGATE_H */

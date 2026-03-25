@@ -22,13 +22,11 @@
             <NumberStates>2</NumberStates>
             <State>
               <Number>0</Number>
-              <Text></Text>
               <Pressed scalemode="STRETCH_ASPECT">icon/ic_radio_button_off_48px.svg</Pressed>
               <Unpressed scalemode="STRETCH_ASPECT">icon/ic_radio_button_off_48px.svg</Unpressed>
             </State>
             <State>
               <Number>1</Number>
-              <Text></Text>
               <Pressed scalemode="STRETCH_ASPECT">icon/ic_radio_button_on_48px.svg</Pressed>
               <Unpressed scalemode="STRETCH_ASPECT">icon/ic_radio_button_on_48px.svg</Unpressed>
             </State>
@@ -38,7 +36,7 @@
             </Connection>
           </PushButton>
           <Label>
-            <Size>30f,10f</Size>
+            <Size>30f,11f</Size>
             <ObjectName>KnobLabel</ObjectName>
             <Text><Variable name="label"/></Text>
           </Label>

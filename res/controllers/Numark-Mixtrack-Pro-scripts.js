@@ -27,14 +27,14 @@
 //
 //	Effect:	Flanger. 1st and 2nd knob modify Depth and Delay.
 //
-//	Cue: 	Don't set Cue accidentaly at the end of the song (return to the lastest cue).
+//	Cue: 	Don't set Cue accidentally at the end of the song (return to the latest cue).
 //		LED ON when stopped. LED OFF when playing.
 //		LED Blink at Beat time in the ultimates 30 seconds of song.
 //
-// 	Stutter: Adjust BeatGrid in the correct place (usefull to sync well).
+// 	Stutter: Adjust BeatGrid in the correct place (useful to sync well).
 //		 LED Blink at each Beat of the grid.
 //
-//	Sync:	If the other deck is stopped, only sync tempo (not fase).
+//	Sync:	If the other deck is stopped, only sync tempo (not phase).
 //		LED Blink at Clip Gain (Peak indicator).
 //
 // 	Pitch: 	Up, Up; Down, Down. Pitch slide are inverted, to match with the screen (otherwise is very confusing).
@@ -49,7 +49,7 @@
 //	In Stop mode, with Scratch OFF or ON: 	Scratch at touch, and Stop moving when the wheel stop moving.
 //	In Play mode, with Scratch OFF: 	Only Pitch bend.
 // 	In Play mode, with Scratch ON: 		Scratch at touch and, in Backwards Stop Scratch when the wheel stop moving for 20ms -> BACKSPIN EFFECT!!!!.
-//						In Fordward Stop Scratch when the touch is released > Play Inmediatly (without breaks for well mix).
+//						In Fordward Stop Scratch when the touch is released > Play Immediately (without breaks for well mix).
 //						Border of the wheels: Pitch Bend.
 //
 
@@ -120,8 +120,8 @@ NumarkMixTrackPro.init = function(id) {	// called when the MIDI device is opened
 
 
 // Clipping LED
-	engine.connectControl("[Channel1]","PeakIndicator","NumarkMixTrackPro.Channel1Clip");
-	engine.connectControl("[Channel2]","PeakIndicator","NumarkMixTrackPro.Channel2Clip");
+	engine.connectControl("[Channel1]","peak_indicator","NumarkMixTrackPro.Channel1Clip");
+	engine.connectControl("[Channel2]","peak_indicator","NumarkMixTrackPro.Channel2Clip");
 
 // Stutter beat light
 	engine.connectControl("[Channel1]","beat_active","NumarkMixTrackPro.Stutter1Beat");
@@ -220,8 +220,7 @@ NumarkMixTrackPro.setLED = function(value, status) {
 
 NumarkMixTrackPro.flashLED = function (led, veces){
 	var ndx = Math.random();
-	var func = "NumarkMixTrackPro.doFlash(" + ndx + ", " + veces + ")";
-	var id = engine.beginTimer(120, func);
+	var id = engine.beginTimer(120, NumarkMixTrackPro.doFlash(ndx, veces));
 	NumarkMixTrackPro.ledTimers[ndx] =  new NumarkMixTrackPro.LedTimer(id, led, 0, false);
 }
 
@@ -325,7 +324,7 @@ NumarkMixTrackPro.flanger = function(channel, control, value, status, group) {
 NumarkMixTrackPro.cuebutton = function(channel, control, value, status, group) {
 
 
-	// Don't set Cue accidentaly at the end of the song
+	// Don't set Cue accidentally at the end of the song
 	if (engine.getValue(group, "playposition") <= 0.97) {
 			engine.setValue(group, "cue_default", value ? 1 : 0);
 	} else {
@@ -589,15 +588,15 @@ NumarkMixTrackPro.jogWheel = function(channel, control, value, status, group) {
 		if (NumarkMixTrackPro.scratchMode[deck-1] && posNeg == -1 && !NumarkMixTrackPro.touch[deck-1]) {
 
 			if (NumarkMixTrackPro.scratchTimer[deck-1] != -1) engine.stopTimer(NumarkMixTrackPro.scratchTimer[deck-1]);
-			NumarkMixTrackPro.scratchTimer[deck-1] = engine.beginTimer(20, "NumarkMixTrackPro.jogWheelStopScratch(" + deck + ")", true);
+			NumarkMixTrackPro.scratchTimer[deck-1] = engine.beginTimer(20, () => {NumarkMixTrackPro.jogWheelStopScratch(deck); }, true);
 		}
 
-	} else { // en stop hace scratch siempre
+    } else { // stop scratching
 
 		if (!NumarkMixTrackPro.touch[deck-1]){
 
 			if (NumarkMixTrackPro.scratchTimer[deck-1] != -1) engine.stopTimer(NumarkMixTrackPro.scratchTimer[deck-1]);
-			NumarkMixTrackPro.scratchTimer[deck-1] = engine.beginTimer(20, "NumarkMixTrackPro.jogWheelStopScratch(" + deck + ")", true);
+			NumarkMixTrackPro.scratchTimer[deck-1] = engine.beginTimer(20, () => { NumarkMixTrackPro.jogWheelStopScratch(); }, true);
 		}
 
 	}
@@ -635,11 +634,11 @@ NumarkMixTrackPro.wheelTouch = function(channel, control, value, status, group){
 
 		if (NumarkMixTrackPro.scratchTimer[deck-1] != -1) engine.stopTimer(NumarkMixTrackPro.scratchTimer[deck-1]);
 
-		NumarkMixTrackPro.scratchTimer[deck-1] = engine.beginTimer(20, "NumarkMixTrackPro.jogWheelStopScratch(" + deck + ")", true);
+		NumarkMixTrackPro.scratchTimer[deck-1] = engine.beginTimer(20, () => { NumarkMixTrackPro.jogWheelStopScratch(deck); }, true);
 
 	} else {
 
-		// si esta en play y el modo scratch desactivado, al presionar el touch no hace nada
+		// if playing and scratch mode is disabled, do nothing on press
 		if (!NumarkMixTrackPro.scratchMode[deck-1] && engine.getValue(group, "play")) return;
 
 		if (NumarkMixTrackPro.scratchTimer[deck-1] != -1) engine.stopTimer(NumarkMixTrackPro.scratchTimer[deck-1]);

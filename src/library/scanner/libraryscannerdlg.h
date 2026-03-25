@@ -1,50 +1,40 @@
-/***************************************************************************
-                          LibraryScannerDlg.cpp  -  shows library scanning
-                                                       progress
-                             -------------------
-    begin                : 11/27/2007
-    copyright            : (C) 2007 Albert Santoni and Adam Davison
-    email                : gamegod \a\t users.sf.net
-***************************************************************************/
+#pragma once
 
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
+#include <QDialog>
+#include <QLabel>
+#include <QProgressBar>
 
-#ifndef LIBRARYSCANNERDLG_H
-#define LIBRARYSCANNERDLG_H
-
-#include <QThread>
-#include <QWidget>
-#include <QString>
-
+#include "util/parented_ptr.h"
 #include "util/performancetimer.h"
 
-class LibraryScannerDlg : public QWidget {
+class LibraryScannerDlg : public QDialog {
     Q_OBJECT
   public:
-    LibraryScannerDlg(QWidget* parent = NULL, Qt::WindowFlags f = Qt::Dialog);
-    virtual ~LibraryScannerDlg();
+    LibraryScannerDlg(QWidget* pParent = nullptr);
+
+    void resetTaskCount();
+    void addQueuedTasks(int num);
 
   public slots:
-    void slotUpdate(QString path);
-    void slotUpdateCover(QString path);
+    void slotUpdate(const QString& path);
+    void slotUpdateCover(const QString& path);
     void slotCancel();
     void slotScanFinished();
     void slotScanStarted();
 
   signals:
     void scanCancelled();
-    void progress(QString);
 
   private:
-    PerformanceTimer m_timer;
-    bool m_bCancelled;
-};
+    void updateProgressBar();
 
-#endif
+    PerformanceTimer m_timer;
+
+    parented_ptr<QLabel> m_pLabelCurrent;
+    parented_ptr<QProgressBar> m_pProgressBar;
+
+    bool m_bCancelled;
+    int m_tasksDone;
+    int m_tasksTotal;
+    bool m_showNoTasksQueuedWarning;
+};

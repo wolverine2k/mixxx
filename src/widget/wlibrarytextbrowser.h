@@ -1,11 +1,8 @@
-// wlibrarytextbrowser.h
-// Created 10/23/2009 by RJ Ryan (rryan@mit.edu)
-
-#ifndef WLIBRARYTEXTBROWSER_H
-#define WLIBRARYTEXTBROWSER_H
+#pragma once
 
 #include <QTextBrowser>
 
+#include "library/library_decl.h"
 #include "library/libraryview.h"
 
 class WLibraryTextBrowser : public QTextBrowser, public LibraryView {
@@ -14,6 +11,8 @@ class WLibraryTextBrowser : public QTextBrowser, public LibraryView {
     explicit WLibraryTextBrowser(QWidget* parent = nullptr);
     void onShow() override {}
     bool hasFocus() const override;
+    void setFocus() override;
+    void keyPressEvent(QKeyEvent* event) override;
+  signals:
+    FocusWidget setLibraryFocus(FocusWidget newFocus);
 };
-
-#endif /* WLIBRARYTEXTBROWSER_H */

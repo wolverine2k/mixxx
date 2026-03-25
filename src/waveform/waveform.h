@@ -1,91 +1,91 @@
-#ifndef WAVEFORM_H
-#define WAVEFORM_H
+#pragma once
 
+#include <QAtomicInt>
+#include <QByteArray>
+#include <QMutex>
+#include <QSharedPointer>
+#include <QString>
 #include <vector>
 
-#include <QMutex>
-#include <QByteArray>
-#include <QString>
-#include <QAtomicInt>
-#include <QSharedPointer>
-#include <QMutexLocker>
-
+#include "analyzer/constants.h"
+#include "audio/signalinfo.h"
 #include "util/class.h"
-#include "util/compatibility.h"
+#include "util/compatibility/qmutex.h"
 
-enum FilterIndex { Low = 0, Mid = 1, High = 2, FilterCount = 3};
+enum BandIndex { AllBand = 0,
+    Low = 1,
+    Mid = 2,
+    High = 3,
+    BandCount = 4 };
 enum ChannelIndex { Left = 0, Right = 1, ChannelCount = 2};
 
-union WaveformData {
-    struct {
-        unsigned char low;
-        unsigned char mid;
-        unsigned char high;
-        unsigned char all;
-    } filtered;
-    int m_i;
+struct WaveformFilteredData {
+    unsigned char low;
+    unsigned char mid;
+    unsigned char high;
+    unsigned char all;
+};
 
-    WaveformData() {}
-    WaveformData(int i) { m_i = i;}
+struct WaveformData {
+    WaveformFilteredData filtered;
+    unsigned char stems[mixxx::kMaxSupportedStems];
 };
 
 class Waveform {
   public:
     enum class SaveState {
         NotSaved = 0,
-        SavePending, 
+        SavePending,
         Saved
     };
 
-    explicit Waveform(const QByteArray pData = QByteArray());
-    Waveform(int audioSampleRate, int audioSamples,
-             int desiredVisualSampleRate, int maxVisualSamples);
+    explicit Waveform(const QByteArray& pData = QByteArray());
+    Waveform(
+            int audioSampleRate,
+            SINT frameLength,
+            int desiredVisualSampleRate,
+            int maxVisualSamples,
+            int stemCount);
 
     virtual ~Waveform();
 
     int getId() const {
-        QMutexLocker locker(&m_mutex);
+        const auto locker = lockMutex(&m_mutex);
         return m_id;
     }
 
     void setId(int id) {
-        QMutexLocker locker(&m_mutex);
+        const auto locker = lockMutex(&m_mutex);
         m_id = id;
     }
 
     QString getVersion() const {
-        QMutexLocker locker(&m_mutex);
+        const auto locker = lockMutex(&m_mutex);
         return m_version;
     }
 
-    void setVersion(QString version) {
-        QMutexLocker locker(&m_mutex);
+    void setVersion(const QString& version) {
+        const auto locker = lockMutex(&m_mutex);
         m_version = version;
     }
 
     QString getDescription() const {
-        QMutexLocker locker(&m_mutex);
+        const auto locker = lockMutex(&m_mutex);
         return m_description;
     }
 
-    void setDescription(QString description) {
-        QMutexLocker locker(&m_mutex);
+    void setDescription(const QString& description) {
+        const auto locker = lockMutex(&m_mutex);
         m_description = description;
     }
 
     QByteArray toByteArray() const;
 
-    // We do not lock the mutex since m_dataSize and m_visualSampleRate are not
-    // changed after the constructor runs.
-    bool isValid() const {
-        return getDataSize() > 0 && getVisualSampleRate() > 0;
-    }
-
     SaveState saveState() const {
         return m_saveState;
     }
 
-    // AnalysisDAO needs to be able to change the state to savePending when finished 
+    // AnalysisDAO needs to be able to change the state to savePending when finished
     // so we mark this as const and m_saveState mutable.
     void setSaveState(SaveState eState) const {
         m_saveState = eState;
@@ -100,7 +100,7 @@ class Waveform {
     // Atomically lookup the completion of the waveform. Represents the number
     // of data elements that have been processed out of dataSize.
     int getCompletion() const {
-        return load_atomic(m_completion);
+        return m_completion.loadAcquire();
     }
     void setCompletion(int completion) {
         m_completion = completion;
@@ -112,7 +112,7 @@ class Waveform {
 
     // We do not lock the mutex since m_data is not resized after the
     // constructor runs.
-    inline int getTextureSize() const { return m_data.size(); }
+    inline int getTextureSize() const { return static_cast<int>(m_data.size()); }
 
     // Atomically get the number of data elements in this Waveform. We do not
     // lock the mutex since m_dataSize is not changed after the constructor
@@ -133,12 +133,16 @@ class Waveform {
     // constructor runs.
     const WaveformData* data() const { return &m_data[0];}
 
+    bool hasStem() const {
+        return m_stemCount > 0;
+    }
+
     void dump() const;
 
   private:
     void readByteArray(const QByteArray& data);
     void resize(int size);
-    void assign(int size, int value = 0);
+    void assign(int size);
 
     inline WaveformData& at(int i) { return m_data[i];}
     inline unsigned char& low(int i) { return m_data[i].filtered.low;}
@@ -178,6 +182,9 @@ class Waveform {
     // the mutex. The completion of the waveform calculation.
     QAtomicInt m_completion;
 
+    // The number of stem contained in waveform samples. 0 if not a stem waveform
+    int m_stemCount;
+
     mutable QMutex m_mutex;
 
     DISALLOW_COPY_AND_ASSIGN(Waveform);
@@ -185,5 +192,3 @@ class Waveform {
 
 typedef QSharedPointer<Waveform> WaveformPointer;
 typedef QSharedPointer<const Waveform> ConstWaveformPointer;
-
-#endif // WAVEFORM_H

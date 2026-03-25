@@ -1,10 +1,8 @@
-#include <QMutexLocker>
-
 #include "vinylcontrol/vinylcontrolprocessor.h"
 
 #include "control/controlpushbutton.h"
+#include "moc_vinylcontrolprocessor.cpp"
 #include "util/defs.h"
-#include "util/event.h"
 #include "util/sample.h"
 #include "util/timer.h"
 #include "vinylcontrol/defs_vinylcontrol.h"
@@ -19,14 +17,16 @@ VinylControlProcessor::VinylControlProcessor(QObject* pParent, UserSettingsPoint
           m_pConfig(pConfig),
           m_pToggle(new ControlPushButton(ConfigKey(VINYL_PREF_KEY, "Toggle"))),
           m_pWorkBuffer(SampleUtil::alloc(MAX_BUFFER_LEN)),
-          m_processorsLock(QMutex::Recursive),
-          m_processors(kMaximumVinylControlInputs, NULL),
+          m_processorsLock(QT_RECURSIVE_MUTEX_INIT),
+          m_processors(kMaximumVinylControlInputs, nullptr),
           m_signalQualityFifo(SIGNAL_QUALITY_FIFO_SIZE),
           m_bReportSignalQuality(false),
           m_bQuit(false),
           m_bReloadConfig(false) {
-    connect(m_pToggle, SIGNAL(valueChanged(double)),
-            this, SLOT(toggleDeck(double)),
+    connect(m_pToggle,
+            &ControlPushButton::valueChanged,
+            this,
+            &VinylControlProcessor::toggleDeck,
             Qt::DirectConnection);
 
     for (int i = 0; i < kMaximumVinylControlInputs; ++i) {
@@ -45,14 +45,14 @@ VinylControlProcessor::~VinylControlProcessor() {
     SampleUtil::free(m_pWorkBuffer);
 
     {
-        QMutexLocker locker(&m_processorsLock);
+        const auto locker = lockMutex(&m_processorsLock);
         for (int i = 0; i < kMaximumVinylControlInputs; ++i) {
             VinylControl* pProcessor = m_processors.at(i);
             m_processors[i] = NULL;
             delete pProcessor;
 
             delete m_samplePipes[i];
-            m_samplePipes[i] = NULL;
+            m_samplePipes[i] = nullptr;
         }
     }
 
@@ -80,14 +80,13 @@ void VinylControlProcessor::run() {
     QThread::currentThread()->setObjectName(QString("VinylControlProcessor %1").arg(++id));
 
     while (!m_bQuit) {
-        Event::start("VinylControlProcessor");
         if (m_bReloadConfig) {
             reloadConfig();
             m_bReloadConfig = false;
         }
 
         for (int i = 0; i < kMaximumVinylControlInputs; ++i) {
-            QMutexLocker locker(&m_processorsLock);
+            auto locker = lockMutex(&m_processorsLock);
             VinylControl* pProcessor = m_processors[i];
             locker.unlock();
             FIFO<CSAMPLE>* pSamplePipe = m_samplePipes[i];
@@ -128,7 +127,6 @@ void VinylControlProcessor::run() {
 
         // Wait for a signal from the main thread or engine thread that we
         // should wake up and process input.
-        Event::end("VinylControlProcessor");
         m_waitForSampleMutex.lock();
         m_samplesAvailableSignal.wait(&m_waitForSampleMutex);
         m_waitForSampleMutex.unlock();
@@ -137,10 +135,10 @@ void VinylControlProcessor::run() {
 
 void VinylControlProcessor::reloadConfig() {
     for (int i = 0; i < kMaximumVinylControlInputs; ++i) {
-        QMutexLocker locker(&m_processorsLock);
+        auto locker = lockMutex(&m_processorsLock);
         VinylControl* pCurrent = m_processors[i];
 
-        if (pCurrent == NULL) {
+        if (pCurrent == nullptr) {
             continue;
         }
 
@@ -153,8 +151,8 @@ void VinylControlProcessor::reloadConfig() {
     }
 }
 
-void VinylControlProcessor::onInputConfigured(AudioInput input) {
-    if (input.getType() != AudioInput::VINYLCONTROL) {
+void VinylControlProcessor::onInputConfigured(const AudioInput& input) {
+    if (input.getType() != AudioPathType::VinylControl) {
         qDebug() << "WARNING: AudioInput type is not VINYLCONTROL. Ignoring.";
         return;
     }
@@ -169,7 +167,7 @@ void VinylControlProcessor::onInputConfigured(AudioInput input) {
     VinylControl *pNew = new VinylControlXwax(
         m_pConfig, kVCGroup.arg(index + 1));
 
-    QMutexLocker locker(&m_processorsLock);
+    auto locker = lockMutex(&m_processorsLock);
     VinylControl* pCurrent = m_processors.at(index);
     m_processors.replace(index, pNew);
     locker.unlock();
@@ -177,8 +175,8 @@ void VinylControlProcessor::onInputConfigured(AudioInput input) {
     delete pCurrent;
 }
 
-void VinylControlProcessor::onInputUnconfigured(AudioInput input) {
-    if (input.getType() != AudioInput::VINYLCONTROL) {
+void VinylControlProcessor::onInputUnconfigured(const AudioInput& input) {
+    if (input.getType() != AudioPathType::VinylControl) {
         qDebug() << "WARNING: AudioInput type is not VINYLCONTROL. Ignoring.";
         return;
     }
@@ -191,23 +189,23 @@ void VinylControlProcessor::onInputUnconfigured(AudioInput input) {
         return;
     }
 
-    QMutexLocker locker(&m_processorsLock);
+    auto locker = lockMutex(&m_processorsLock);
     VinylControl* pVC = m_processors.at(index);
-    m_processors.replace(index, NULL);
+    m_processors.replace(index, nullptr);
     locker.unlock();
     // Delete outside of the critical section to avoid deadlocks.
     delete pVC;
 }
 
 bool VinylControlProcessor::deckConfigured(int index) const {
-    return m_processors[index] != NULL;
+    return m_processors[index] != nullptr;
 }
 
-void VinylControlProcessor::receiveBuffer(AudioInput input,
-                                          const CSAMPLE* pBuffer,
-                                          unsigned int nFrames) {
-    ScopedTimer t("VinylControlProcessor::receiveBuffer");
-    if (input.getType() != AudioInput::VINYLCONTROL) {
+void VinylControlProcessor::receiveBuffer(const AudioInput& input,
+        const CSAMPLE* pBuffer,
+        unsigned int nFrames) {
+    ScopedTimer t(QStringLiteral("VinylControlProcessor::receiveBuffer"));
+    if (input.getType() != AudioPathType::VinylControl) {
         qDebug() << "WARNING: AudioInput type is not VINYLCONTROL. Ignoring incoming buffer.";
         return;
     }
@@ -221,12 +219,12 @@ void VinylControlProcessor::receiveBuffer(AudioInput input,
 
     FIFO<CSAMPLE>* pSamplePipe = m_samplePipes[vcIndex];
 
-    if (pSamplePipe == NULL) {
+    if (pSamplePipe == nullptr) {
         // Should not be possible.
         return;
     }
 
-    const int kChannels = 2;
+    constexpr int kChannels = 2;
     const int nSamples = nFrames * kChannels;
     int samplesWritten = pSamplePipe->write(pBuffer, nSamples);
 
@@ -239,8 +237,9 @@ void VinylControlProcessor::receiveBuffer(AudioInput input,
 }
 
 void VinylControlProcessor::toggleDeck(double value) {
-    if (!value)
+    if (value == 0) {
         return;
+    }
 
     /** few different cases here:
      * 1. No decks have vinyl control enabled.
@@ -257,7 +256,7 @@ void VinylControlProcessor::toggleDeck(double value) {
     // -1 means we haven't found a proxy that's enabled
     int enabled = -1;
 
-    QMutexLocker locker(&m_processorsLock);
+    QT_RECURSIVE_MUTEX_LOCKER locker(&m_processorsLock);
 
     for (int i = 0; i < m_processors.size(); ++i) {
         VinylControl* pProcessor = m_processors.at(i);

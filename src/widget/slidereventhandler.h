@@ -1,5 +1,4 @@
-#ifndef SLIDEREVENTHANDLER_H
-#define SLIDEREVENTHANDLER_H
+#pragma once
 
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -43,9 +42,17 @@ class SliderEventHandler {
     void mouseMoveEvent(T* pWidget, QMouseEvent* e) {
         if (!m_bRightButtonPressed) {
             if (m_bHorizontal) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                m_dPos = e->position().x() - m_dHandleLength / 2;
+#else
                 m_dPos = e->x() - m_dHandleLength / 2;
+#endif
             } else {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                m_dPos = e->position().y() - m_dHandleLength / 2;
+#else
                 m_dPos = e->y() - m_dHandleLength / 2;
+#endif
             }
 
             m_dPos = m_dStartHandlePos + (m_dPos - m_dStartMousePos);
@@ -66,7 +73,7 @@ class SliderEventHandler {
             }
 
             // Update display
-            pWidget->update();
+            pWidget->inputActivity();
         }
     }
 
@@ -82,12 +89,26 @@ class SliderEventHandler {
                 m_bRightButtonPressed = true;
             } else {
                 if (m_bHorizontal) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                    m_dStartMousePos = e->position().x() - m_dHandleLength / 2;
+#else
                     m_dStartMousePos = e->x() - m_dHandleLength / 2;
+#endif
                 } else {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                    m_dStartMousePos = e->position().y() - m_dHandleLength / 2;
+#else
                     m_dStartMousePos = e->y() - m_dHandleLength / 2;
+#endif
                 }
                 m_dStartHandlePos = m_dPos;
             }
+        }
+    }
+
+    void mouseDoubleClickEvent(T* pWidget, QMouseEvent* e) {
+        if (e->button() == Qt::LeftButton) {
+            pWidget->resetControlParameter();
         }
     }
 
@@ -105,7 +126,7 @@ class SliderEventHandler {
 
     void wheelEvent(T* pWidget, QWheelEvent* e) {
         // For legacy (MIDI) reasons this is tuned to 127.
-        double wheelAdjustment = (e)->delta() / (120.0 * 127.0);
+        double wheelAdjustment = (e)->angleDelta().y() / (120.0 * 127.0);
         double newParameter = pWidget->getControlParameter() + wheelAdjustment;
 
         // Clamp to [0.0, 1.0]
@@ -113,7 +134,7 @@ class SliderEventHandler {
 
         pWidget->setControlParameter(newParameter);
         onConnectedControlChanged(pWidget, newParameter);
-        pWidget->update();
+        pWidget->inputActivity();
         e->accept();
     }
 
@@ -203,5 +224,3 @@ class SliderEventHandler {
     // Is true if events is emitted while the slider is dragged
     bool m_bEventWhileDrag;
 };
-
-#endif /* SLIDEREVENTHANDLER_H */

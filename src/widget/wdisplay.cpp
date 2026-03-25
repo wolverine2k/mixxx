@@ -1,28 +1,11 @@
-/***************************************************************************
-                          wdisplay.cpp  -  description
-                             -------------------
-    begin                : Fri Jun 21 2002
-    copyright            : (C) 2002 by Tue & Ken Haste Andersen
-    email                : haste@diku.dk
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
 #include "widget/wdisplay.h"
 
-#include <QStylePainter>
 #include <QStyleOption>
-#include <QPaintEvent>
+#include <QStylePainter>
 #include <QtDebug>
-#include <QPixmap>
 
+#include "moc_wdisplay.cpp"
+#include "skin/legacy/skincontext.h"
 #include "widget/wpixmapstore.h"
 
 WDisplay::WDisplay(QWidget * parent)
@@ -43,8 +26,8 @@ void WDisplay::setup(const QDomNode& node, const SkinContext& context) {
     QDomElement backPathNode = context.selectElement(node, "BackPath");
     if (!backPathNode.isNull()) {
         setPixmapBackground(context.getPixmapSource(backPathNode),
-                            context.selectScaleMode(backPathNode, Paintable::TILE),
-                            context.getScaleFactor());
+                context.selectScaleMode(backPathNode, Paintable::DrawMode::Tile),
+                context.getScaleFactor());
     }
 
     // Number of states
@@ -56,9 +39,9 @@ void WDisplay::setup(const QDomNode& node, const SkinContext& context) {
     // The implicit default in <1.12.0 was FIXED so we keep it for
     // backwards compatibility.
     Paintable::DrawMode pathMode =
-            context.selectScaleMode(pathNode, Paintable::FIXED);
+            context.selectScaleMode(pathNode, Paintable::DrawMode::Fixed);
     for (int i = 0; i < m_pixmaps.size(); ++i) {
-        setPixmap(&m_pixmaps, i, context.getSkinPath(path.arg(i)),
+        setPixmap(&m_pixmaps, i, context.makeSkinPath(path.arg(i)),
                   pathMode, context.getScaleFactor());
     }
 
@@ -69,10 +52,10 @@ void WDisplay::setup(const QDomNode& node, const SkinContext& context) {
         // The implicit default in <1.12.0 was FIXED so we keep it for
         // backwards compatibility.
         Paintable::DrawMode disabledMode =
-            context.selectScaleMode(disabledNode, Paintable::FIXED);
+                context.selectScaleMode(disabledNode, Paintable::DrawMode::Fixed);
         for (int i = 0; i < m_disabledPixmaps.size(); ++i) {
             setPixmap(&m_disabledPixmaps, i,
-                      context.getSkinPath(disabledPath.arg(i)),
+                      context.makeSkinPath(disabledPath.arg(i)),
                       disabledMode, context.getScaleFactor());
         }
         m_bDisabledLoaded = true;
@@ -93,17 +76,17 @@ void WDisplay::setPositions(int iNoPos) {
 }
 
 void WDisplay::resetPositions() {
-    m_pPixmapBack.clear();
+    m_pPixmapBack.reset();
     m_pixmaps.resize(0);
     m_disabledPixmaps.resize(0);
 }
 
-void WDisplay::setPixmapBackground(PixmapSource source,
-                                   Paintable::DrawMode mode,
-                                   double scaleFactor) {
+void WDisplay::setPixmapBackground(const PixmapSource& source,
+        Paintable::DrawMode mode,
+        double scaleFactor) {
     m_pPixmapBack = WPixmapStore::getPaintable(source, mode, scaleFactor);
-    if (m_pPixmapBack.isNull() || m_pPixmapBack->isNull()) {
-        qDebug() << metaObject()->className()
+    if (!m_pPixmapBack || m_pPixmapBack->isNull()) {
+        qDebug() << metaObject()->className() << objectName()
                  << "Error loading background pixmap:" << source.getPath();
     }
 }
@@ -120,12 +103,12 @@ void WDisplay::setPixmap(
 
     PixmapSource source(filename);
     PaintablePointer pPixmap = WPixmapStore::getPaintable(source, mode, scaleFactor);
-    if (pPixmap.isNull() || pPixmap->isNull()) {
-        qDebug() << metaObject()->className()
-                 << "Error loading pixmap:" << filename;
+    if (!pPixmap || pPixmap->isNull()) {
+        qDebug() << metaObject()->className() << objectName()
+                 << "Error loading pixmap:" << filename << "for" << iPos;
     } else {
         (*pPixmaps)[iPos] = pPixmap;
-        if (mode == Paintable::FIXED) {
+        if (mode == Paintable::DrawMode::Fixed) {
             setFixedSize(pPixmap->size());
         }
     }

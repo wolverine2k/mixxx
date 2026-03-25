@@ -1,13 +1,19 @@
-#include <QtDebug>
+#include "widget/wcombobox.h"
+
+#include <QDomNode>
+#include <QEvent>
 #include <QIcon>
 
-#include "widget/wcombobox.h"
+#include "moc_wcombobox.cpp"
+#include "skin/legacy/skincontext.h"
 
 WComboBox::WComboBox(QWidget* pParent)
         : QComboBox(pParent),
           WBaseWidget(this) {
-    connect(this, SIGNAL(currentIndexChanged(int)),
-            this, SLOT(slotCurrentIndexChanged(int)));
+    connect(this,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            &WComboBox::slotCurrentIndexChanged);
 }
 
 void WComboBox::setup(const QDomNode& node, const SkinContext& context) {
@@ -21,8 +27,10 @@ void WComboBox::setup(const QDomNode& node, const SkinContext& context) {
                 QString icon = context.selectString(state, "Icon");
                 addItem(QIcon(icon), text, QVariant(iState));
             } else {
-                SKIN_WARNING(state, context)
-                        << "WComboBox ignoring <State> without <Number> node.";
+                SKIN_WARNING(state,
+                        context,
+                        QStringLiteral("WComboBox ignoring <State> without "
+                                       "<Number> node."));
             }
         }
         state = state.nextSibling();

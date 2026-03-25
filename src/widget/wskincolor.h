@@ -1,33 +1,15 @@
-/***************************************************************************
-                          wskincolor.h  -  description
-                             -------------------
-    begin                : 14 April 2007
-    copyright            : (C) 2007 by Adam Davison
-    email                : adamdavison@gmail.com
- ***************************************************************************/
+#pragma once
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
+#include <QColor>
+#include <memory>
 
-#ifndef WSKINCOLOR_H
-#define WSKINCOLOR_H
-
-#include <QSharedPointer>
-#include "skin/imgsource.h"
+class ImgSource;
 
 class WSkinColor {
   public:
     static QColor getCorrectColor(QColor c);
-    static void setLoader(QSharedPointer<ImgSource> ld);
+    static void setLoader(std::shared_ptr<ImgSource> ld);
+
   private:
-    static QSharedPointer<ImgSource> loader;
+    static std::shared_ptr<ImgSource> loader;
 };
-
-#endif
-

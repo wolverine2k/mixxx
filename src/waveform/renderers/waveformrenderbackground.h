@@ -1,15 +1,14 @@
-#ifndef WAVEFORMRENDERBACKGROUND_H
-#define WAVEFORMRENDERBACKGROUND_H
+#pragma once
 
 #include <QColor>
 #include <QDomNode>
-#include <QPaintEvent>
-#include <QPainter>
 
-#include "skin/skincontext.h"
+#include "skin/legacy/skincontext.h"
 #include "util/class.h"
 #include "waveformrendererabstract.h"
 
+class QPaintEvent;
+class QPainter;
 class WaveformWidgetRenderer;
 
 class WaveformRenderBackground : public WaveformRendererAbstract {
@@ -20,14 +19,17 @@ class WaveformRenderBackground : public WaveformRendererAbstract {
     virtual void setup(const QDomNode& node, const SkinContext& context);
     virtual void draw(QPainter* painter, QPaintEvent* event);
 
+  protected:
+    bool hasImage();
+    void drawImage(QPainter* painter);
+
+    QColor m_backgroundColor;
+
   private:
     void generateImage();
 
     QString m_backgroundPixmapPath;
-    QColor m_backgroundColor;
     QImage m_backgroundImage;
 
     DISALLOW_COPY_AND_ASSIGN(WaveformRenderBackground);
 };
-
-#endif /* WAVEFORMRENDERBACKGROUND_H */

@@ -1,96 +1,81 @@
-/***************************************************************************
-                          sounddeviceportaudio.cpp
-                             -------------------
-    begin                : Sun Aug 15, 2007 (Stardate -315378.5417935057)
-    copyright            : (C) 2007 Albert Santoni
-    email                : gamegod \a\t users.sf.net
- ***************************************************************************/
-
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
-#ifndef SOUNDDEVICEPORTAUDIO_H
-#define SOUNDDEVICEPORTAUDIO_H
+#pragma once
 
 #include <portaudio.h>
 
 #include <QString>
+#include <condition_variable>
+#include <memory>
+
+#include "control/pollingcontrolproxy.h"
+#include "soundio/sounddevice.h"
+#include "soundio/soundmanagerconfig.h"
+#include "util/duration.h"
+#include "util/fifo.h"
 #include "util/performancetimer.h"
 
-#include "soundio/sounddevice.h"
-#include "util/duration.h"
-
-
-#define CPU_USAGE_UPDATE_RATE 30 // in 1/s, fits to display frame rate
-#define CPU_OVERLOAD_DURATION 500 // in ms
-
 class SoundManager;
-class ControlProxy;
-
-/** Dynamically resolved function which allows us to enable a realtime-priority callback
-    thread from ALSA/PortAudio. This must be dynamically resolved because PortAudio can't
-    tell us if ALSA is compiled into it or not. */
-typedef int (*EnableAlsaRT)(PaStream* s, int enable);
 
 class SoundDevicePortAudio : public SoundDevice {
   public:
     SoundDevicePortAudio(UserSettingsPointer config,
-                         SoundManager *sm, const PaDeviceInfo *deviceInfo,
-                         unsigned int devIndex);
-    virtual ~SoundDevicePortAudio();
+            SoundManager* sm,
+            const PaDeviceInfo* deviceInfo,
+            PaHostApiTypeId deviceTypeId,
+            unsigned int devIndex);
+    ~SoundDevicePortAudio() override;
 
-    virtual SoundDeviceError open(bool isClkRefDevice, int syncBuffers);
-    virtual bool isOpen() const;
-    virtual SoundDeviceError close();
-    virtual void readProcess();
-    virtual void writeProcess();
-    virtual QString getError() const;
+    SoundDeviceStatus open(bool isClkRefDevice, int syncBuffers) override;
+    bool isOpen() const override;
+    SoundDeviceStatus close() override;
+    void readProcess(SINT framesPerBuffer) override;
+    void writeProcess(SINT framesPerBuffer) override;
+    QString getError() const override;
 
-    // This callback function gets called everytime the sound device runs out of
+    // This callback function gets called every time the sound device runs out of
     // samples (ie. when it needs more sound to play)
-    int callbackProcess(const unsigned int framesPerBuffer,
+    int callbackProcess(const SINT framesPerBuffer,
                         CSAMPLE *output, const CSAMPLE* in,
                         const PaStreamCallbackTimeInfo *timeInfo,
                         PaStreamCallbackFlags statusFlags);
     // Same as above but with drift correction
-    int callbackProcessDrift(const unsigned int framesPerBuffer,
+    int callbackProcessDrift(const SINT framesPerBuffer,
                         CSAMPLE *output, const CSAMPLE* in,
                         const PaStreamCallbackTimeInfo *timeInfo,
                         PaStreamCallbackFlags statusFlags);
     // The same as above but drives the MixxEngine
-    int callbackProcessClkRef(const unsigned int framesPerBuffer,
+    int callbackProcessClkRef(const SINT framesPerBuffer,
                         CSAMPLE *output, const CSAMPLE* in,
                         const PaStreamCallbackTimeInfo *timeInfo,
                         PaStreamCallbackFlags statusFlags);
 
-    virtual unsigned int getDefaultSampleRate() const {
-        return m_deviceInfo ? static_cast<unsigned int>(
-            m_deviceInfo->defaultSampleRate) : 44100;
+    // Callback called once the process callback returns paAbort.
+    void finishedCallback();
+
+    mixxx::audio::SampleRate getDefaultSampleRate() const override {
+        return m_deviceInfo ? mixxx::audio::SampleRate::fromDouble(
+                                      m_deviceInfo->defaultSampleRate)
+                            : SoundManagerConfig::kMixxxDefaultSampleRate;
     }
 
   private:
-    void updateCallbackEntryToDacTime(const PaStreamCallbackTimeInfo* timeInfo);
-    void updateAudioLatencyUsage(const unsigned int framesPerBuffer);
+    void updateCallbackEntryToDacTime(
+            SINT framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo);
+    void updateAudioLatencyUsage(const SINT framesPerBuffer);
+
+    void makeStreamInactiveAndWait();
 
     // PortAudio stream for this device.
-    PaStream* volatile m_pStream;
-    // PortAudio device index for this device.
-    PaDeviceIndex m_devId;
+    std::atomic<PaStream*> m_pStream;
     // Struct containing information about this device. Don't free() it, it
     // belongs to PortAudio.
     const PaDeviceInfo* m_deviceInfo;
+    const PaHostApiTypeId m_deviceTypeId;
     // Description of the output stream going to the soundcard.
     PaStreamParameters m_outputParams;
     // Description of the input stream coming from the soundcard.
     PaStreamParameters m_inputParams;
-    FIFO<CSAMPLE>* m_outputFifo;
-    FIFO<CSAMPLE>* m_inputFifo;
+    std::unique_ptr<FIFO<CSAMPLE>> m_outputFifo;
+    std::unique_ptr<FIFO<CSAMPLE>> m_inputFifo;
     bool m_outputDrift;
     bool m_inputDrift;
 
@@ -98,18 +83,15 @@ class SoundDevicePortAudio : public SoundDevice {
     QString m_lastError;
     // Whether we have set the thread priority to realtime or not.
     bool m_bSetThreadPriority;
-    ControlProxy* m_pMasterAudioLatencyOverloadCount;
-    ControlProxy* m_pMasterAudioLatencyUsage;
-    ControlProxy* m_pMasterAudioLatencyOverload;
-    int m_underflowUpdateCount;
-    static volatile int m_underflowHappened;
+    PollingControlProxy m_audioLatencyUsage;
     mixxx::Duration m_timeInAudioCallback;
     int m_framesSinceAudioLatencyUsageUpdate;
     int m_syncBuffers;
     int m_invalidTimeInfoCount;
     PerformanceTimer m_clkRefTimer;
     PaTime m_lastCallbackEntrytoDacSecs;
-
+    std::atomic<int> m_callbackResult;
+    std::mutex m_finishedMutex;
+    std::condition_variable m_finishedCV;
+    bool m_bFinished;
 };
-
-#endif

@@ -1,67 +1,21 @@
-#ifndef FILE_H
-#define FILE_H
+#pragma once
 
-#include <QFile>
-#include <QDir>
+#include <QString>
 
-#include "util/sandbox.h"
+// Check if the extension from the file filter was added to the file base name.
+// Otherwise add it manually.
+// Works around https://bugreports.qt.io/browse/QTBUG-27186
+QString filePathWithSelectedExtension(const QString& fileLocationInput,
+        const QString& fileFilter,
+        const QString& fileFilters);
 
-class MFile {
-  public:
-    MFile();
-    MFile(const QString& name);
-    MFile(const MFile& other);
-    virtual ~MFile();
-
-    QFile& file() {
-        return m_file;
-    }
-
-    const QFile& file() const {
-        return m_file;
-    }
-
-    SecurityTokenPointer token() {
-        return m_pSecurityToken;
-    }
-
-    bool canAccess();
-
-    MFile& operator=(const MFile& other);
-
-  private:
-    QString m_fileName;
-    QFile m_file;
-    SecurityTokenPointer m_pSecurityToken;
-};
-
-class MDir {
-  public:
-    MDir();
-    MDir(const QString& name);
-    MDir(const MDir& other);
-    virtual ~MDir();
-
-    QDir& dir() {
-        return m_dir;
-    }
-
-    const QDir& dir() const {
-        return m_dir;
-    }
-
-    SecurityTokenPointer token() {
-        return m_pSecurityToken;
-    }
-
-    bool canAccess();
-
-    MDir& operator=(const MDir& other);
-
-  private:
-    QString m_dirPath;
-    QDir m_dir;
-    SecurityTokenPointer m_pSecurityToken;
-};
-
-#endif /* FILE_H */
+// Due to Qt bug https://bugreports.qt.io/browse/QTBUG-27186 we may need to
+// manually add the selected extension to the selected file name.
+// Unfortunately, this would bypass Qt's file overwrite dialog. To avoid
+// creating our own file overwrite dialog we show the file dialog again with
+// the repaired file path pre-selected so Qt's overwrite dialog can kick in.
+QString getFilePathWithVerifiedExtensionFromFileDialog(
+        const QString& caption,
+        const QString& preSelectedDirectory,
+        const QString& fileFilters,
+        const QString& preSelectedFileFilter);

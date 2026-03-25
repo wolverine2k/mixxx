@@ -1,11 +1,9 @@
 #include "library/export/trackexportwizard.h"
 
 #include <QFileDialog>
-#include <QFileInfo>
-#include <QDesktopServices>
-#include <QMessageBox>
+#include <QStandardPaths>
 
-#include "util/assert.h"
+#include "moc_trackexportwizard.cpp"
 
 void TrackExportWizard::exportTracks() {
     if (!selectDestinationDirectory()) {
@@ -16,12 +14,17 @@ void TrackExportWizard::exportTracks() {
 }
 
 bool TrackExportWizard::selectDestinationDirectory() {
+    if (m_tracks.isEmpty()) {
+        qInfo() << "TrackExportWizard: No tracks to export, cancel.";
+        return false;
+    }
+
     QString lastExportDirectory = m_pConfig->getValue(
             ConfigKey("[Library]", "LastTrackCopyDirectory"),
-            QDesktopServices::storageLocation(QDesktopServices::MusicLocation));
+            QStandardPaths::writableLocation(QStandardPaths::MusicLocation));
 
     QString destDir = QFileDialog::getExistingDirectory(
-            NULL, tr("Export Track Files To"), lastExportDirectory);
+            nullptr, tr("Export Track Files To"), lastExportDirectory);
     if (destDir.isEmpty()) {
         return false;
     }
@@ -32,4 +35,3 @@ bool TrackExportWizard::selectDestinationDirectory() {
     m_dialog.reset(new TrackExportDlg(m_parent, m_pConfig, m_worker.data()));
     return true;
 }
-

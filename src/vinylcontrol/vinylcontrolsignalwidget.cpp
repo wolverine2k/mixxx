@@ -1,31 +1,18 @@
-/***************************************************************************
-                          vinylcontrolsignalwidget.cpp
-                             -------------------
-    begin                : July 5, 2008
-    copyright            : (C) 2008 by Albert Santoni
-    email                : gamegod \a\t users.sf.net
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
 #include "vinylcontrol/vinylcontrolsignalwidget.h"
 
+#include <QPainter>
+#include <algorithm>
+
+#include "moc_vinylcontrolsignalwidget.cpp"
+
 VinylControlSignalWidget::VinylControlSignalWidget()
-    : QWidget(),
-      m_iVinylInput(-1),
-      m_iSize(MIXXX_VINYL_SCOPE_SIZE),
-      m_qImage(),
-      m_imageData(NULL),
-      m_iAngle(0),
-      m_fSignalQuality(0.0f),
-      m_bVinylActive(false) {
+        : QWidget(),
+          m_iVinylInput(-1),
+          m_iSize(MIXXX_VINYL_SCOPE_SIZE),
+          m_qImage(),
+          m_iAngle(0),
+          m_fSignalQuality(0.0f),
+          m_bVinylActive(false) {
 }
 
 void VinylControlSignalWidget::setSize(int size) {
@@ -33,8 +20,8 @@ void VinylControlSignalWidget::setSize(int size) {
     setSizePolicy(QSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed));
     setMinimumSize(size, size);
     setMaximumSize(size, size);
-    m_imageData = new uchar[size * size * 4];
-    m_qImage = QImage(m_imageData, size, size, 0, QImage::Format_ARGB32);
+    m_imageData.resize(size * size * 4);
+    m_qImage = QImage(m_imageData.data(), size, size, 0, QImage::Format_ARGB32);
 }
 
 void VinylControlSignalWidget::setVinylInput(int input) {
@@ -42,13 +29,13 @@ void VinylControlSignalWidget::setVinylInput(int input) {
 }
 
 VinylControlSignalWidget::~VinylControlSignalWidget() {
-    delete [] m_imageData;
 }
 
 void VinylControlSignalWidget::setVinylActive(bool active)
 {
-    if (m_bVinylActive != active && !active)
+    if (m_bVinylActive != active && !active) {
         resetWidget();
+    }
     m_bVinylActive = active;
 }
 
@@ -59,7 +46,7 @@ void VinylControlSignalWidget::onVinylSignalQualityUpdate(const VinylSignalQuali
         return;
     }
 
-    m_iAngle = report.angle;
+    m_iAngle = static_cast<int>(report.angle);
     m_fSignalQuality = report.timecode_quality;
 
     int r,g,b;
@@ -71,7 +58,7 @@ void VinylControlSignalWidget::onVinylSignalQualityUpdate(const VinylSignalQuali
     qual_color.setHsv((int)(120.0 * m_fSignalQuality), 255, 255);
     qual_color.getRgb(&r, &g, &b);
 
-    if (m_imageData == NULL) {
+    if (m_imageData.empty()) {
         return;
     }
 
@@ -90,9 +77,7 @@ void VinylControlSignalWidget::onVinylSignalQualityUpdate(const VinylSignalQuali
 
 void VinylControlSignalWidget::resetWidget()
 {
-    if (m_imageData != NULL) {
-        memset(m_imageData, 0, sizeof(uchar) * m_iSize * m_iSize * 4);
-    }
+    std::fill(std::begin(m_imageData), std::end(m_imageData), 0);
 }
 
 void VinylControlSignalWidget::paintEvent(QPaintEvent* event) {
@@ -111,10 +96,10 @@ void VinylControlSignalWidget::paintEvent(QPaintEvent* event) {
 
         //quarter axes
         painter.setPen(QColor(0, 127, 0));
-        painter.drawLine(sizeX * 0.25, 0, sizeX * 0.25, sizeY);
-        painter.drawLine(sizeX * 0.75, 0, sizeX * 0.75, sizeY);
-        painter.drawLine(0, sizeY * 0.25, sizeX, sizeY * 0.25);
-        painter.drawLine(0, sizeY * 0.75, sizeX, sizeY * 0.75);
+        painter.drawLine(QLineF(sizeX * 0.25, 0, sizeX * 0.25, sizeY));
+        painter.drawLine(QLineF(sizeX * 0.75, 0, sizeX * 0.75, sizeY));
+        painter.drawLine(QLineF(0, sizeY * 0.25, sizeX, sizeY * 0.25));
+        painter.drawLine(QLineF(0, sizeY * 0.75, sizeX, sizeY * 0.75));
 
         //sweep
         if (m_iAngle >= 0) {

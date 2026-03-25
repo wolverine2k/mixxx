@@ -1,9 +1,4 @@
-#ifndef STEADYPITCH_H
-#define STEADYPITCH_H
-
-#include <QTime>
-
-#include "vinylcontrol.h"
+#pragma once
 
 class SteadyPitch {
     public:
@@ -23,5 +18,3 @@ class SteadyPitch {
         double m_dPitchThreshold;
         int m_iPlayDirection;
 };
-
-#endif

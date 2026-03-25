@@ -1,10 +1,6 @@
-#ifndef MIDIOPTIONSDELEGATE_H
-#define MIDIOPTIONSDELEGATE_H
+#pragma once
 
 #include <QStyledItemDelegate>
-#include <QTableView>
-
-#include "controllers/midi/midimessage.h"
 
 class MidiOptionsDelegate : public QStyledItemDelegate {
     Q_OBJECT
@@ -21,6 +17,7 @@ class MidiOptionsDelegate : public QStyledItemDelegate {
 
     void setModelData(QWidget* editor, QAbstractItemModel* model,
                       const QModelIndex& index) const;
-};
 
-#endif /* MIDIOPTIONSDELEGATE_H */
+  private slots:
+    void commitAndCloseEditor(int index);
+};

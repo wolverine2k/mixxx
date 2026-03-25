@@ -1,21 +1,25 @@
 #include "waveform/sharedglcontext.h"
 
-#include <QtDebug>
+#ifndef MIXXX_USE_QOPENGL
+#include <QDebug>
 #include <QGLContext>
 #include <QGLFormat>
-#include <QGLWidget>
 
-const QGLWidget* SharedGLContext::s_pSharedGLWidget = NULL;
+#include "widget/wglwidget.h"
+#endif
+
+WGLWidget* SharedGLContext::s_pSharedGLWidget = nullptr;
 
 // static
-void SharedGLContext::setWidget(const QGLWidget* pWidget) {
+void SharedGLContext::setWidget(WGLWidget* pWidget) {
     s_pSharedGLWidget = pWidget;
+#ifndef MIXXX_USE_QOPENGL
     qDebug() << "Set root GL Context widget valid:"
              << pWidget << (pWidget && pWidget->isValid());
-    const QGLContext* pContext = pWidget->context();
-    qDebug() << "Created root GL Context valid:" << pContext
-             << (pContext && pContext->isValid());
     if (pWidget) {
+        const QGLContext* pContext = pWidget->context();
+        qDebug() << "Created root GL Context valid:" << pContext
+                 << (pContext && pContext->isValid());
         QGLFormat format = pWidget->format();
         qDebug() << "Root GL Context format:";
         qDebug() << "Double Buffering:" << format.doubleBuffer();
@@ -29,9 +33,10 @@ void SharedGLContext::setWidget(const QGLWidget* pWidget) {
         qDebug() << "Stencil buffers:" << format.stencil();
         qDebug() << "Stereo:" << format.stereo();
     }
+#endif
 }
 
 // static
-const QGLWidget* SharedGLContext::getWidget() {
+WGLWidget* SharedGLContext::getWidget() {
     return s_pSharedGLWidget;
 }

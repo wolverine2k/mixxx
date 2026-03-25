@@ -1,5 +1,4 @@
-#ifndef UTIL_MUTEX_H
-#define UTIL_MUTEX_H
+#pragma once
 
 // Thread annotation aware variants of locks, read-write locks and scoped
 // lockers. This allows us to use Clang thread safety analysis in Mixxx.
@@ -7,15 +6,13 @@
 
 #include <QMutex>
 #include <QReadWriteLock>
-#include <QMutexLocker>
 
+#include "util/compatibility/qmutex.h"
 #include "util/thread_annotations.h"
 
 class CAPABILITY("mutex") MMutex {
   public:
-    MMutex(QMutex::RecursionMode mode = QMutex::NonRecursive)
-            : m_mutex(mode) {
-    }
+    MMutex() = default;
 
     inline void lock() ACQUIRE() { m_mutex.lock(); }
     inline void unlock() RELEASE() { m_mutex.unlock(); }
@@ -60,7 +57,26 @@ class SCOPED_CAPABILITY MMutexLocker {
     inline void unlock() RELEASE() { m_locker.unlock(); }
 
   private:
-    QMutexLocker m_locker;
+    QT_MUTEX_LOCKER m_locker;
+};
+
+class SCOPED_CAPABILITY MMutexLockerDebug {
+  public:
+    MMutexLockerDebug(MMutex* pMu, const QString& info = {})
+            : m_pMutex(pMu) {
+        if (!m_pMutex->tryLock()) {
+            qDebug() << "Mutex wait" << info;
+            m_pMutex->lock();
+        }
+        qDebug() << "Mutex locked" << info;
+    }
+    ~MMutexLockerDebug() {
+        m_pMutex->unlock();
+        qDebug() << "Mutex unlocked";
+    }
+
+  private:
+    MMutex* m_pMutex;
 };
 
 class SCOPED_CAPABILITY MWriteLocker {
@@ -85,5 +101,3 @@ class SCOPED_CAPABILITY MReadLocker {
   private:
     QReadLocker m_locker;
 };
-
-#endif /* UTIL_MUTEX_H */

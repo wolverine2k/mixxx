@@ -1,24 +1,10 @@
-/***************************************************************************
-                          wlabel.cpp  -  description
-                             -------------------
-    begin                : Wed Jan 5 2005
-    copyright            : (C) 2003 by Tue Haste Andersen
-    email                : haste@diku.dk
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
 #include "widget/wlabel.h"
 
+#include <QEvent>
 #include <QFont>
 
+#include "moc_wlabel.cpp"
+#include "skin/legacy/skincontext.h"
 #include "widget/wskincolor.h"
 
 WLabel::WLabel(QWidget* pParent)
@@ -27,7 +13,9 @@ WLabel::WLabel(QWidget* pParent)
           m_skinText(),
           m_longText(),
           m_elideMode(Qt::ElideNone),
-          m_scaleFactor(1.0) {
+          m_scaleFactor(1.0),
+          m_highlight(0),
+          m_widthHint(0) {
 }
 
 void WLabel::setup(const QDomNode& node, const SkinContext& context) {
@@ -38,12 +26,12 @@ void WLabel::setup(const QDomNode& node, const SkinContext& context) {
 
     QDomElement bgColor = context.selectElement(node, "BgColor");
     if (!bgColor.isNull()) {
-        m_qBgColor.setNamedColor(context.nodeToString(bgColor));
+        m_qBgColor = QColor(context.nodeToString(bgColor));
         pal.setColor(this->backgroundRole(), WSkinColor::getCorrectColor(m_qBgColor));
         setAutoFillBackground(true);
     }
 
-    m_qFgColor.setNamedColor(context.selectString(node, "FgColor"));
+    m_qFgColor = QColor(context.selectString(node, "FgColor"));
     pal.setColor(this->foregroundRole(), WSkinColor::getCorrectColor(m_qFgColor));
     setPalette(pal);
 
@@ -95,7 +83,7 @@ void WLabel::setup(const QDomNode& node, const SkinContext& context) {
         } else if (elide == "none") {
             m_elideMode = Qt::ElideNone;
         } else {
-            qDebug() << "WLabel::setup(): Alide =" << elide <<
+            qDebug() << "WLabel::setup(): Elide =" << elide <<
                     "unknown, use right, middle, left or none.";
         }
     }
@@ -109,12 +97,12 @@ void WLabel::setText(const QString& text) {
     m_longText = text;
     if (m_elideMode != Qt::ElideNone) {
         QFontMetrics metrics(font());
-        // Measure the text for label width
-        // it turns out, that "-2" is required to make the text actually fit
-        // (Tested on Ubuntu Trusty)
-        // TODO(lp#:1434865): Fix elide width calculation for cases where
-        // this text is next to an expanding widget.
-        QString elidedText = metrics.elidedText(m_longText, m_elideMode, width() - 2);
+        // Measure the text for the optimum label width
+        // frameWidth() is the maximum of the sum of margin, border and padding
+        // width of the left and the right side.
+        m_widthHint = metrics.size(0, m_longText).width() + 2 * frameWidth();
+        QString elidedText = metrics.elidedText(
+                m_longText, m_elideMode, width() - 2 * frameWidth());
         QLabel::setText(elidedText);
     } else {
         QLabel::setText(m_longText);
@@ -131,7 +119,8 @@ bool WLabel::event(QEvent* pEvent) {
         // resetting the font to the original css values.
         // Only scale pixel size fonts, point size fonts are scaled by the OS
         if (fonti.pixelSize() > 0) {
-            const_cast<QFont&>(fonti).setPixelSize(fonti.pixelSize() * m_scaleFactor);
+            const_cast<QFont&>(fonti).setPixelSize(
+                    static_cast<int>(fonti.pixelSize() * m_scaleFactor));
         }
         // measure text with the new font
         setText(m_longText);
@@ -147,4 +136,25 @@ void WLabel::resizeEvent(QResizeEvent* event) {
 void WLabel::fillDebugTooltip(QStringList* debug) {
     WBaseWidget::fillDebugTooltip(debug);
     *debug << QString("Text: \"%1\"").arg(text());
+}
+
+int WLabel::getHighlight() const {
+    return m_highlight;
+}
+
+void WLabel::setHighlight(int highlight) {
+    if (m_highlight == highlight) {
+        return;
+    }
+    m_highlight = highlight;
+    emit highlightChanged(m_highlight);
+}
+
+QSize WLabel::sizeHint() const {
+    // make sure the sizeHint fits for the entire string.
+    QSize size = QLabel::sizeHint();
+    if (m_elideMode != Qt::ElideNone) {
+        size.setWidth(m_widthHint);
+    }
+    return size;
 }

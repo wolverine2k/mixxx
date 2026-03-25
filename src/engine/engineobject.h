@@ -1,39 +1,18 @@
-/***************************************************************************
-                          engineobject.h  -  description
-                             -------------------
-    begin                : Wed Feb 20 2002
-    copyright            : (C) 2002 by Tue and Ken Haste Andersen
-    email                :
- ***************************************************************************/
-
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
-#ifndef ENGINEOBJECT_H
-#define ENGINEOBJECT_H
+#pragma once
 
 #include <QObject>
 
 #include "util/types.h"
-#include "engine/effects/groupfeaturestate.h"
 
-/**
-  *@author Tue and Ken Haste Andersen
-  */
+struct GroupFeatureState;
 
 class EngineObject : public QObject {
     Q_OBJECT
   public:
     EngineObject();
-    virtual ~EngineObject();
+    ~EngineObject() override;
     virtual void process(CSAMPLE* pInOut,
-                         const int iBufferSize) = 0;
+            const std::size_t bufferSize) = 0;
 
     // Sub-classes re-implement and populate GroupFeatureState with the features
     // they extract.
@@ -46,10 +25,7 @@ class EngineObjectConstIn : public QObject {
     Q_OBJECT
   public:
     EngineObjectConstIn();
-    virtual ~EngineObjectConstIn();
+    ~EngineObjectConstIn() override;
 
-    virtual void process(const CSAMPLE* pIn, CSAMPLE* pOut,
-                         const int iBufferSize) = 0;
+    virtual void process(const CSAMPLE* pIn, CSAMPLE* pOut, const std::size_t bufferSize) = 0;
 };
-
-#endif

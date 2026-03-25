@@ -1,12 +1,15 @@
-#include <QtDebug>
-#include <QDesktopServices>
-#include <QSettings>
+#include "library/banshee/bansheedbconnection.h"
+
 #include <QFile>
 #include <QFileInfo>
+#include <QMap>
+#include <QSettings>
 #include <QSqlError>
+#include <QSqlQuery>
+#include <QStandardPaths>
+#include <QtDebug>
 
 #include "library/queryutil.h"
-#include "library/banshee/bansheedbconnection.h"
 #include "util/performancetimer.h"
 
 BansheeDbConnection::BansheeDbConnection() {
@@ -41,7 +44,7 @@ bool BansheeDbConnection::open(const QString& databaseFile) {
 
 int BansheeDbConnection::getSchemaVersion() {
     QSqlQuery query(m_database);
-    query.prepare("SELECT Value FROM CoreConfiguration WHERE Key = \"DatabaseVersion\"");
+    query.prepare("SELECT Value FROM CoreConfiguration WHERE Key = 'DatabaseVersion'");
 
     if (query.exec()) {
         if (query.next()) {
@@ -53,10 +56,10 @@ int BansheeDbConnection::getSchemaVersion() {
     return -1;
 }
 
-QList<struct BansheeDbConnection::Playlist> BansheeDbConnection::getPlaylists() {
+QList<BansheeDbConnection::Playlist> BansheeDbConnection::getPlaylists() {
 
-    QList<struct BansheeDbConnection::Playlist> list;
-    struct BansheeDbConnection::Playlist playlist;
+    QList<BansheeDbConnection::Playlist> list;
+    BansheeDbConnection::Playlist playlist;
 
     QSqlQuery query(m_database);
     query.prepare("SELECT PlaylistID, Name FROM CorePlaylists ORDER By Name");
@@ -73,13 +76,13 @@ QList<struct BansheeDbConnection::Playlist> BansheeDbConnection::getPlaylists() 
     return list;
 }
 
-QList<struct BansheeDbConnection::PlaylistEntry> BansheeDbConnection::getPlaylistEntries(int playlistId) {
+QList<BansheeDbConnection::PlaylistEntry> BansheeDbConnection::getPlaylistEntries(int playlistId) {
 
     PerformanceTimer time;
     time.start();
 
-    QList<struct BansheeDbConnection::PlaylistEntry> list;
-    struct BansheeDbConnection::PlaylistEntry entry;
+    QList<BansheeDbConnection::PlaylistEntry> list;
+    BansheeDbConnection::PlaylistEntry entry;
 
     QSqlQuery query(m_database);
     query.setForwardOnly(true); // Saves about 50% time
@@ -87,7 +90,7 @@ QList<struct BansheeDbConnection::PlaylistEntry> BansheeDbConnection::getPlaylis
     QString queryString;
 
     if (playlistId == 0) {
-        // Create Master Playlist
+        // Create Main Playlist
         queryString = QString(
             "SELECT "
             "CoreTracks.TrackID, "        // 0
@@ -222,7 +225,7 @@ QString BansheeDbConnection::getDatabaseFile() {
     }
 
     // Legacy Banshee Application Data Path
-    dbfile = QDesktopServices::storageLocation(QDesktopServices::HomeLocation);
+    dbfile = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
     dbfile += "/.gnome2/banshee/banshee.db";
     if (QFile::exists(dbfile)) {
         return dbfile;

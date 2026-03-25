@@ -1,35 +1,21 @@
-/***************************************************************************
-                          enginedelay.h  -  description
-                             -------------------
-    copyright            : (C) 2002 by Tue and Ken Haste Andersen
-    email                :
- ***************************************************************************/
-
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
-#ifndef ENGINEDELAY_H
-#define ENGINEDELAY_H
+#pragma once
 
 #include "engine/engineobject.h"
-#include "preferences/usersettings.h"
+#include "util/samplebuffer.h"
 
+class ConfigKey;
 class ControlPotmeter;
 class ControlProxy;
 
 class EngineDelay : public EngineObject {
     Q_OBJECT
   public:
-    EngineDelay(const char* group, ConfigKey delayControl);
-    virtual ~EngineDelay();
+    EngineDelay(const ConfigKey& delayControl, bool bPersist = true);
+    ~EngineDelay() override;
 
-    void process(CSAMPLE* pInOut, const int iBufferSize);
+    void process(CSAMPLE* pInOut, const std::size_t bufferSize) override;
+
+    void setDelay(double newDelay);
 
   public slots:
     void slotDelayChanged();
@@ -37,9 +23,7 @@ class EngineDelay : public EngineObject {
   private:
     ControlPotmeter* m_pDelayPot;
     ControlProxy* m_pSampleRate;
-    CSAMPLE* m_pDelayBuffer;
+    mixxx::SampleBuffer m_delayBuffer;
     int m_iDelayPos;
     int m_iDelay;
 };
-
-#endif

@@ -1,18 +1,14 @@
-#ifndef WWIDGETGROUP_H
-#define WWIDGETGROUP_H
+#pragma once
 
-#include <QDomNode>
 #include <QFrame>
-#include <QPaintEvent>
 #include <QPixmap>
-#include <QResizeEvent>
 #include <QString>
 #include <QWidget>
-#include <QEvent>
 
 #include "widget/wbasewidget.h"
 #include "widget/wpixmapstore.h"
 
+class QDomNode;
 class SkinContext;
 
 class WWidgetGroup : public QFrame, public WBaseWidget {
@@ -61,17 +57,17 @@ class WWidgetGroup : public QFrame, public WBaseWidget {
     QRect layoutContentsMargins() const;
     void setLayoutContentsMargins(QRect rectMargins);
     Qt::Alignment layoutAlignment() const;
-    void setLayoutAlignment(int alignment);
+    void setLayoutAlignment(Qt::Alignment alignment);
     int getHighlight() const;
     void setHighlight(int highlight);
 
     virtual void setup(const QDomNode& node, const SkinContext& context);
     void setPixmapBackground(
-            PixmapSource source,
+            const PixmapSource& source,
             Paintable::DrawMode mode,
             double scaleFactor);
     void setPixmapBackgroundHighlighted(
-            PixmapSource source,
+            const PixmapSource& source,
             Paintable::DrawMode mode,
             double scaleFactor);
     void addWidget(QWidget* pChild);
@@ -91,5 +87,3 @@ class WWidgetGroup : public QFrame, public WBaseWidget {
     PaintablePointer m_pPixmapBackHighlighted;
     int m_highlight;
 };
-
-#endif // WWIDGETGROUP_H

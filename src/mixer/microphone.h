@@ -1,27 +1,24 @@
-#ifndef MIXER_MICROPHONE_H
-#define MIXER_MICROPHONE_H
-
-#include <QObject>
-#include <QScopedPointer>
-#include <QString>
+#pragma once
 
 #include "mixer/baseplayer.h"
+#include "util/parented_ptr.h"
 
 class ControlProxy;
 class EffectsManager;
-class EngineMaster;
+class EngineMixer;
 class SoundManager;
+class QString;
 
 class Microphone : public BasePlayer {
     Q_OBJECT
   public:
-    Microphone(QObject* pParent,
-               const QString& group,
-               int index,
-               SoundManager* pSoundManager,
-               EngineMaster* pMixingEngine,
-               EffectsManager* pEffectsManager);
-    virtual ~Microphone();
+    Microphone(PlayerManager* pParent,
+            const QString& group,
+            int index,
+            SoundManager* pSoundManager,
+            EngineMixer* pMixingEngine,
+            EffectsManager* pEffectsManager);
+    ~Microphone() override;
 
   signals:
     void noMicrophoneInputConfigured();
@@ -30,8 +27,6 @@ class Microphone : public BasePlayer {
     void slotTalkoverEnabled(double v);
 
   private:
-    QScopedPointer<ControlProxy> m_pInputConfigured;
-    QScopedPointer<ControlProxy> m_pTalkoverEnabled;
+    parented_ptr<ControlProxy> m_pInputConfigured;
+    parented_ptr<ControlProxy> m_pTalkoverEnabled;
 };
-
-#endif /* MIXER_MICROPHONE_H */

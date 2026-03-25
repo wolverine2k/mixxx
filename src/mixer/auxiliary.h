@@ -1,25 +1,34 @@
-#ifndef MIXER_AUXILIARY_H
-#define MIXER_AUXILIARY_H
+#pragma once
 
 #include <QObject>
 #include <QString>
 
 #include "mixer/baseplayer.h"
+#include "util/parented_ptr.h"
 
+class ControlProxy;
 class EffectsManager;
-class EngineMaster;
+class EngineMixer;
 class SoundManager;
 
 class Auxiliary : public BasePlayer {
     Q_OBJECT
   public:
-    Auxiliary(QObject* pParent,
-              const QString& group,
-              int index,
-              SoundManager* pSoundManager,
-              EngineMaster* pMixingEngine,
-              EffectsManager* pEffectsManager);
-    virtual ~Auxiliary();
-};
+    Auxiliary(PlayerManager* pParent,
+            const QString& group,
+            int index,
+            SoundManager* pSoundManager,
+            EngineMixer* pMixingEngine,
+            EffectsManager* pEffectsManager);
+    ~Auxiliary() override;
 
-#endif /* MIXER_AUXILIARY_H */
+  signals:
+    void noAuxiliaryInputConfigured();
+
+  private slots:
+    void slotAuxMainMixEnabled(double v);
+
+  private:
+    parented_ptr<ControlProxy> m_pInputConfigured;
+    parented_ptr<ControlProxy> m_pAuxMainMixEnabled;
+};

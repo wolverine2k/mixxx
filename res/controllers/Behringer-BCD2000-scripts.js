@@ -4,7 +4,7 @@ BehringerBCD2000.escratch = [false, false];
 
 //sensitivity setting
 BehringerBCD2000.UseAcceleration = true;
-BehringerBCD2000.JogSensivity = 0.2;
+BehringerBCD2000.JogSensitivity = 0.2;
 
 BehringerBCD2000.init = function (id) { // called when the device is opened & set up
 
@@ -24,7 +24,7 @@ BehringerBCD2000.shutdown = function () {
 
    BehringerBCD2000.reset();
 
-   // Reenable jog acceleration
+   // Re-enable jog acceleration
    if (!BehringerBCD2000.UseAcceleration)
       midi.sendShortMsg(0xB0, 0x63, 0x7F);
 };
@@ -73,11 +73,11 @@ else
 
       if (value >= 65)
 
-{jogValue = (value - 0x40) * BehringerBCD2000.JogSensivity;}
+{jogValue = (value - 0x40) * BehringerBCD2000.JogSensitivity;}
 
 else
 
-{jogValue = (value - 0x41) * BehringerBCD2000.JogSensivity;}
+{jogValue = (value - 0x41) * BehringerBCD2000.JogSensitivity;}
       engine.setValue(group, "jog", jogValue);
 
       if (BehringerBCD2000.debug)

@@ -4,7 +4,8 @@
         <name>Denon MC4000</name>
         <author>Tim Rae</author>
         <description>2-deck mapping for Denon MC4000 controller</description>
-        <forums>http://mixxx.org/forums/viewtopic.php?f=7&amp;t=7443</forums>
+        <forums>https://mixxx.discourse.group/t/denon-mc4000-mapping/15311</forums>
+        <manual>denon_mc4000</manual>
     </info>
     <controller id="MC4000">
         <scriptfiles>
@@ -428,7 +429,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- ### Hot cue pads ### -->
             <!-- Hot cue Pad 1 -->
             <control>
@@ -578,7 +579,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- FX Enable switches -->
             <control>
                 <group>[EffectRack1_EffectUnit1_Effect1]</group>
@@ -689,7 +690,7 @@
                     <normal/>
                 </options>
             </control>
-            <!-- Map the TAP button to the main bpm setting 
+            <!-- Map the TAP button to the main bpm setting
             (differs from Serato which maps it to the FX timing -->
             <control>
                 <group>[Channel1]</group>
@@ -709,10 +710,10 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- NOTE: Shift button isn't mapped to anything as number shifted automatically -->
             <!-- TODO: "PAD MODE" currently isn't mapped to anything -->
-            
+
             <!-- Headphone split cue switch-->
             <control>
                 <group>[Master]</group>
@@ -736,7 +737,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- Load deck 2 -->
             <control>
                 <group>[Channel2]</group>
@@ -786,7 +787,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- Sampler pads -->
             <control>
                 <group>[Sampler1]</group>
@@ -860,7 +861,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- Jog whel -->
             <control>
                 <group>[Channel1]</group>
@@ -920,7 +921,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- Library encoder maps to Up/Down buttons -->
             <control>
                 <group>[Library]</group>
@@ -941,17 +942,17 @@
                     <selectknob/>
                 </options>
             </control>
-            <!-- Library encoder button push maps to ChooseItem -->
+            <!-- Library encoder button push maps to GoToItem -->
             <control>
                 <group>[Library]</group>
-                <key>ChooseItem</key>
+                <key>GoToItem</key>
                 <status>0x9F</status>
                 <midino>0x1F</midino>
                 <options>
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- FX meta knobs -->
             <control>
                 <group>[EffectRack1_EffectUnit1_Effect1]</group>
@@ -1007,7 +1008,7 @@
                     <normal/>
                 </options>
             </control>
-            
+
             <!-- ### Start of mixer channel strips (not in order)  ###
             Level Knob, Hi Knob, Mid Knob, Low knob, Filter knob, Channel Fader -->
             <control>

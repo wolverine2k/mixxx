@@ -1,12 +1,9 @@
-#ifndef TREE_ITEM_MODEL_H
-#define TREE_ITEM_MODEL_H
+#pragma once
 
 #include <QAbstractItemModel>
 #include <QModelIndex>
 #include <QVariant>
-#include <QList>
-
-#include "util/memory.h"
+#include <memory>
 
 class TreeItem;
 
@@ -16,7 +13,7 @@ class TreeItemModel : public QAbstractItemModel {
     static const int kDataRole = Qt::UserRole;
     static const int kBoldRole = Qt::UserRole + 1;
 
-    explicit TreeItemModel(QObject *parent = 0);
+    explicit TreeItemModel(QObject* parent = nullptr);
     ~TreeItemModel() override;
 
     QVariant data(const QModelIndex &index, int role) const override;
@@ -31,12 +28,17 @@ class TreeItemModel : public QAbstractItemModel {
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     int columnCount(const QModelIndex &parent = QModelIndex()) const override;
 
-    void insertTreeItemRows(QList<TreeItem*> &rows, int position, const QModelIndex& parent = QModelIndex());
+    void insertTreeItemRows(
+            std::vector<std::unique_ptr<TreeItem>>&&,
+            int position,
+            const QModelIndex& parent = QModelIndex());
 
     TreeItem* setRootItem(std::unique_ptr<TreeItem> pRootItem);
     TreeItem* getRootItem() const {
         return m_pRootItem.get();
     }
+    /// Returns the QModelIndex of the Root element.
+    const QModelIndex getRootIndex();
 
     // Return the underlying TreeItem.
     // If the index is invalid, the root item is returned.
@@ -48,5 +50,3 @@ class TreeItemModel : public QAbstractItemModel {
   private:
     std::unique_ptr<TreeItem> m_pRootItem;
 };
-
-#endif

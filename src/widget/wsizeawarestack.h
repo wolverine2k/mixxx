@@ -1,12 +1,19 @@
-#ifndef WSIZEAWARESTACK_H
-#define WSIZEAWARESTACK_H
+#pragma once
 
+#include <QSize>
+#include <QStackedLayout>
 #include <QWidget>
-#include <QEvent>
 
 #include "widget/wbasewidget.h"
 
-class SizeAwareLayout;
+class QEvent;
+
+class SizeAwareLayout : public QStackedLayout {
+    Q_OBJECT
+  public:
+    QSize minimumSize() const override;
+    int setCurrentIndexForSize(const QSize& s);
+};
 
 class WSizeAwareStack : public QWidget, public WBaseWidget {
     Q_OBJECT
@@ -22,5 +29,3 @@ class WSizeAwareStack : public QWidget, public WBaseWidget {
   private:
     SizeAwareLayout* m_layout;
 };
-
-#endif /* WSIZEAWARESTACK_H */

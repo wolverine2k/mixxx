@@ -1,76 +1,80 @@
-#ifndef ENGINEEFFECTCHAIN_H
-#define ENGINEEFFECTCHAIN_H
+#pragma once
 
-#include <QString>
 #include <QList>
-#include <QLinkedList>
+#include <QString>
 
-#include "util/class.h"
-#include "util/types.h"
-#include "util/samplebuffer.h"
-#include "util/memory.h"
+#include "audio/types.h"
 #include "engine/channelhandle.h"
+#include "engine/effects/engineeffectsdelay.h"
 #include "engine/effects/message.h"
-#include "engine/effects/groupfeaturestate.h"
-#include "effects/effectchain.h"
+#include "util/class.h"
+#include "util/samplebuffer.h"
+#include "util/types.h"
 
 class EngineEffect;
 
-class EngineEffectChain : public EffectsRequestHandler {
+/// EngineEffectChain is the audio thread counterpart of EffectChain.
+/// The lifetime of EngineEffectChain corresponds to the lifetime of
+/// its EffectChain counterpart; EngineEffectChains are neither created
+/// nor destroyed apart from Mixxx startup and shutdown.
+///
+/// EngineEffectChain processes a list of EngineEffects in series.
+/// EngineEffectChain manages the input channel routing switches,
+/// the mix knob, and the chain enable switch.
+class EngineEffectChain final : public EffectsRequestHandler {
   public:
-    EngineEffectChain(const QString& id);
-    virtual ~EngineEffectChain();
+    /// called from main thread
+    EngineEffectChain(const QString& group,
+            const QSet<ChannelHandleAndGroup>& registeredInputChannels,
+            const QSet<ChannelHandleAndGroup>& registeredOutputChannels);
+    /// called from main thread
+    ~EngineEffectChain();
 
+    /// called from audio thread
     bool processEffectsRequest(
-        const EffectsRequest& message,
-        EffectsResponsePipe* pResponsePipe);
+            const EffectsRequest& message,
+            EffectsResponsePipe* pResponsePipe) override;
 
-    void process(const ChannelHandle& handle,
-                 CSAMPLE* pInOut,
-                 const unsigned int numSamples,
-                 const unsigned int sampleRate,
-                 const GroupFeatureState& groupFeatures);
-
-    const QString& id() const {
-        return m_id;
-    }
-
-    bool enabledForChannel(const ChannelHandle& handle) const;
+    /// called from audio thread
+    bool process(const ChannelHandle& inputHandle,
+            const ChannelHandle& outputHandle,
+            CSAMPLE* pIn,
+            CSAMPLE* pOut,
+            const std::size_t numSamples,
+            const mixxx::audio::SampleRate sampleRate,
+            const GroupFeatureState& groupFeatures,
+            bool fadeout);
 
   private:
     struct ChannelStatus {
         ChannelStatus()
-                : old_gain(0),
-                  enable_state(EffectProcessor::DISABLED) {
+                : oldMixKnob(0),
+                  enableState(EffectEnableState::Disabled) {
         }
-        CSAMPLE old_gain;
-        EffectProcessor::EnableState enable_state;
+        CSAMPLE oldMixKnob;
+        EffectEnableState enableState;
     };
 
     QString debugString() const {
-        return QString("EngineEffectChain(%1)").arg(m_id);
+        return QString("EngineEffectChain(%1)").arg(m_group);
     }
 
     bool updateParameters(const EffectsRequest& message);
     bool addEffect(EngineEffect* pEffect, int iIndex);
     bool removeEffect(EngineEffect* pEffect, int iIndex);
-    bool enableForChannel(const ChannelHandle& handle);
-    bool disableForChannel(const ChannelHandle& handle);
+    bool enableForInputChannel(ChannelHandle inputHandle);
+    bool disableForInputChannel(ChannelHandle inputHandle);
 
-    // Gets or creates a ChannelStatus entry in m_channelStatus for the provided
-    // handle.
-    ChannelStatus& getChannelStatus(const ChannelHandle& handle);
-
-    QString m_id;
-    EffectProcessor::EnableState m_enableState;
-    EffectChain::InsertionType m_insertionType;
+    QString m_group;
+    bool m_enableState;
+    EffectChainMixMode::Type m_mixMode;
     CSAMPLE m_dMix;
     QList<EngineEffect*> m_effects;
-    SampleBuffer m_buffer1;
-    SampleBuffer m_buffer2;
-    ChannelHandleMap<ChannelStatus> m_channelStatus;
+    mixxx::SampleBuffer m_buffer1;
+    mixxx::SampleBuffer m_buffer2;
+    ChannelHandleMap<ChannelStatus> m_outputChannelMap;
+    ChannelHandleMap<ChannelHandleMap<ChannelStatus>> m_chainStatusForChannelMatrix;
+    EngineEffectsDelay m_effectsDelay;
 
     DISALLOW_COPY_AND_ASSIGN(EngineEffectChain);
 };
-
-#endif /* ENGINEEFFECTCHAIN_H */

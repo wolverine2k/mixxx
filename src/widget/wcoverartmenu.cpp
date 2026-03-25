@@ -1,12 +1,15 @@
+#include "widget/wcoverartmenu.h"
+
 #include <QFileDialog>
 #include <QFileInfo>
 
-#include "widget/wcoverartmenu.h"
 #include "library/coverartutils.h"
-#include "util/sandbox.h"
+#include "moc_wcoverartmenu.cpp"
+#include "util/assert.h"
 
-WCoverArtMenu::WCoverArtMenu(QWidget *parent)
-        : QMenu(parent) {
+WCoverArtMenu::WCoverArtMenu(QWidget* parent)
+        : QMenu(parent),
+          m_isWorkerRunning(false) {
     createActions();
 }
 
@@ -17,19 +20,18 @@ WCoverArtMenu::~WCoverArtMenu() {
 }
 
 void WCoverArtMenu::createActions() {
-    m_pChange = new QAction(tr("Choose new cover",
-            "change cover art location"), this);
-    connect(m_pChange, SIGNAL(triggered()), this, SLOT(slotChange()));
+    m_pChange = new QAction(tr("Choose file", "change cover art location"), this);
+    connect(m_pChange, &QAction::triggered, this, &WCoverArtMenu::slotChange);
     addAction(m_pChange);
 
-    m_pUnset = new QAction(tr("Unset cover",
+    m_pUnset = new QAction(tr("Clear cover",
             "clears the set cover art -- does not touch files on disk"), this);
-    connect(m_pUnset, SIGNAL(triggered()), this, SLOT(slotUnset()));
+    connect(m_pUnset, &QAction::triggered, this, &WCoverArtMenu::slotUnset);
     addAction(m_pUnset);
 
     m_pReload = new QAction(tr("Reload from file/folder",
             "reload cover art from file metadata or folder"), this);
-    connect(m_pReload, SIGNAL(triggered()), this, SIGNAL(reloadCoverArt()));
+    connect(m_pReload, &QAction::triggered, this, &WCoverArtMenu::reloadCoverArt);
     addAction(m_pReload);
 }
 
@@ -38,27 +40,27 @@ void WCoverArtMenu::setCoverArt(const CoverInfo& coverInfo) {
 }
 
 void WCoverArtMenu::slotChange() {
-    QFileInfo fileInfo;
-    if (!m_coverInfo.trackLocation.isEmpty()) {
-        fileInfo = QFileInfo(m_coverInfo.trackLocation);
+    VERIFY_OR_DEBUG_ASSERT(!m_coverInfo.trackLocation.isEmpty()) {
+        return;
     }
+
+    QFileInfo trackFileInfo(m_coverInfo.trackLocation);
 
     QString initialDir;
     if (m_coverInfo.type == CoverInfo::FILE) {
-        QFileInfo coverFile(fileInfo.dir(), m_coverInfo.coverLocation);
+        QFileInfo coverFile(trackFileInfo.dir(), m_coverInfo.coverLocation);
         initialDir = coverFile.absolutePath();
     } else {
         // Default to the track's directory if the cover is not
         // stored in a separate file.
-        initialDir = fileInfo.absolutePath();
+        initialDir = trackFileInfo.absolutePath();
     }
 
     QStringList extensions = CoverArtUtils::supportedCoverArtExtensions();
     for (auto&& extension : extensions) {
         extension.prepend("*.");
     }
-    QString supportedText = QString("%1 (%2)").arg(tr("Image Files"))
-            .arg(extensions.join(" "));
+    QString supportedText = QString("%1 (%2)").arg(tr("Image Files"), extensions.join(" "));
 
     // open file dialog
     QString selectedCoverPath = QFileDialog::getOpenFileName(
@@ -67,32 +69,95 @@ void WCoverArtMenu::slotChange() {
         return;
     }
 
-    // TODO(rryan): Ask if user wants to copy the file.
+    QString selectedCoverExtension = QFileInfo(selectedCoverPath).suffix();
 
-    CoverInfo coverInfo;
-    // Create a security token for the file.
-    QFileInfo selectedCover(selectedCoverPath);
-    SecurityTokenPointer pToken = Sandbox::openSecurityToken(
-        selectedCover, true);
-    QImage image(selectedCoverPath);
-    if (image.isNull()) {
-        // TODO(rryan): feedback
+    QString coverArtCopyFilePath =
+            trackFileInfo.absoluteFilePath().left(
+                    trackFileInfo.absoluteFilePath().lastIndexOf('.') + 1) +
+            selectedCoverExtension;
+
+    VERIFY_OR_DEBUG_ASSERT(m_isWorkerRunning == false) {
         return;
-    }
-    coverInfo.type = CoverInfo::FILE;
-    coverInfo.source = CoverInfo::USER_SELECTED;
-    coverInfo.coverLocation = selectedCoverPath;
-    // TODO() here we may introduce a duplicate hash code
-    coverInfo.hash = CoverArtUtils::calculateHash(image);
-    coverInfo.trackLocation = m_coverInfo.trackLocation;
-    qDebug() << "WCoverArtMenu::slotChange emit" << coverInfo;
-    emit(coverInfoSelected(coverInfo));
+    };
+
+    m_worker.reset(new CoverArtCopyWorker(selectedCoverPath, coverArtCopyFilePath));
+
+    connect(m_worker.data(),
+            &CoverArtCopyWorker::started,
+            this,
+            &WCoverArtMenu::slotStarted);
+
+    connect(m_worker.data(),
+            &CoverArtCopyWorker::askOverwrite,
+            this,
+            &WCoverArtMenu::slotAskOverwrite);
+
+    connect(m_worker.data(),
+            &CoverArtCopyWorker::coverArtCopyFailed,
+            this,
+            &WCoverArtMenu::slotCoverArtCopyFailed);
+
+    connect(m_worker.data(),
+            &CoverArtCopyWorker::coverArtUpdated,
+            this,
+            &WCoverArtMenu::slotCoverArtUpdated);
+
+    connect(m_worker.data(),
+            &CoverArtCopyWorker::finished,
+            this,
+            &WCoverArtMenu::slotFinished);
+
+    m_worker->start();
 }
 
 void WCoverArtMenu::slotUnset() {
     CoverInfo coverInfo;
-    coverInfo.type = CoverInfo::NONE;
     coverInfo.source = CoverInfo::USER_SELECTED;
     qDebug() << "WCoverArtMenu::slotUnset emit" << coverInfo;
-    emit(coverInfoSelected(coverInfo));
+    emit coverInfoSelected(coverInfo);
+}
+
+void WCoverArtMenu::slotStarted() {
+    m_isWorkerRunning = true;
+}
+
+void WCoverArtMenu::slotCoverArtUpdated(const CoverInfoRelative& coverInfo) {
+    qDebug() << "WCoverArtMenu::slotChange emit" << coverInfo;
+    emit coverInfoSelected(coverInfo);
+}
+
+void WCoverArtMenu::slotAskOverwrite(const QString& coverArtAbsolutePath,
+        std::promise<CoverArtCopyWorker::OverwriteAnswer>* promise) {
+    QFileInfo coverArtInfo(coverArtAbsolutePath);
+    QString coverArtName = coverArtInfo.completeBaseName();
+    QString coverArtFolder = coverArtInfo.absolutePath();
+    QMessageBox overwrite_box(
+            QMessageBox::Warning,
+            tr("Cover Art File Already Exists"),
+            tr("File: %1\n"
+               "Folder: %2\n"
+               "Override existing file?\n"
+               "This can not be undone!")
+                    .arg(coverArtName, coverArtFolder));
+    overwrite_box.addButton(QMessageBox::Yes);
+    overwrite_box.addButton(QMessageBox::No);
+
+    switch (overwrite_box.exec()) {
+    case QMessageBox::No:
+        promise->set_value(CoverArtCopyWorker::OverwriteAnswer::Cancel);
+        return;
+    case QMessageBox::Yes:
+        promise->set_value(CoverArtCopyWorker::OverwriteAnswer::Overwrite);
+        return;
+    }
+}
+
+void WCoverArtMenu::slotCoverArtCopyFailed(const QString& errorMessage) {
+    QMessageBox copyFailBox;
+    copyFailBox.setText(errorMessage);
+    copyFailBox.exec();
+}
+
+void WCoverArtMenu::slotFinished() {
+    m_isWorkerRunning = false;
 }

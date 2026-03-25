@@ -1,24 +1,19 @@
-/**
-* @file hidenumerator.h
-* @author Sean Pappalardo spappalardo@mixxx.org
-* @date Sat Apr 30 2011
-* @brief This class handles discovery and enumeration of DJ controllers that use the USB-HID protocol
-*/
-
-#ifndef HIDENUMERATOR_H
-#define HIDENUMERATOR_H
+#pragma once
 
 #include "controllers/controllerenumerator.h"
+#include "controllers/hid/hiddevice.h"
 
+/// This class handles discovery and enumeration of DJ controllers that use the
+/// USB-HID protocol.
 class HidEnumerator : public ControllerEnumerator {
+    Q_OBJECT
   public:
-    HidEnumerator();
-    virtual ~HidEnumerator();
+    bool recognizeDevice(const hid_device_info& device_info) const;
+    HidEnumerator() = default;
+    ~HidEnumerator() override;
 
-    QList<Controller*> queryDevices();
+    QList<Controller*> queryDevices() override;
 
   private:
     QList<Controller*> m_devices;
 };
-
-#endif

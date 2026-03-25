@@ -1,12 +1,10 @@
-#ifndef DIALOG_DLGDEVELOPERTOOLS_H
-#define DIALOG_DLGDEVELOPERTOOLS_H
+#pragma once
 
 #include <QDialog>
+#include <QFile>
 #include <QSortFilterProxyModel>
-#include <QTimerEvent>
 
-#include "control/controlmodel.h"
-#include "control/controlobject.h"
+#include "control/controlsortfiltermodel.h"
 #include "dialog/ui_dlgdevelopertoolsdlg.h"
 #include "preferences/usersettings.h"
 #include "util/statmodel.h"
@@ -14,21 +12,21 @@
 class DlgDeveloperTools : public QDialog, public Ui::DlgDeveloperTools {
     Q_OBJECT
   public:
-    DlgDeveloperTools(QWidget* pParent,
-                      UserSettingsPointer pConfig);
+    DlgDeveloperTools(QWidget* pParent, UserSettingsPointer pConfig);
+
+    bool eventFilter(QObject* pObj, QEvent* pEvent) override;
 
   protected:
     void timerEvent(QTimerEvent* pTimerEvent) override;
 
   private slots:
     void slotControlSearch(const QString& search);
-    void slotControlSearchClear();
     void slotLogSearch();
     void slotControlDump();
 
   private:
-    ControlModel m_controlModel;
-    QSortFilterProxyModel m_controlProxyModel;
+    UserSettingsPointer m_pConfig;
+    ControlSortFilterModel m_controlProxyModel;
 
     StatModel m_statModel;
     QSortFilterProxyModel m_statProxyModel;
@@ -36,5 +34,3 @@ class DlgDeveloperTools : public QDialog, public Ui::DlgDeveloperTools {
     QFile m_logFile;
     QTextCursor m_logCursor;
 };
-
-#endif // DIALOG_DLGDEVELOPERTOOLS_H

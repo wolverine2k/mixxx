@@ -2,13 +2,14 @@
 
 #include <QtDebug>
 
+#include "analyzer/analyzertrack.h"
+#include "analyzer/constants.h"
 #include "track/track.h"
 #include "util/math.h"
-#include "util/sample.h"
 #include "util/timer.h"
 
 namespace {
-const double kReplayGain2ReferenceLUFS = -18;
+constexpr double kReplayGain2ReferenceLUFS = -18;
 } // anonymous namespace
 
 AnalyzerEbur128::AnalyzerEbur128(UserSettingsPointer pConfig)
@@ -20,70 +21,69 @@ AnalyzerEbur128::~AnalyzerEbur128() {
     cleanup(); // ...to prevent memory leaks
 }
 
-bool AnalyzerEbur128::initialize(TrackPointer tio,
-        int sampleRate, int totalSamples) {
-    if (isDisabledOrLoadStoredSuccess(tio) || totalSamples == 0) {
+bool AnalyzerEbur128::initialize(
+        const AnalyzerTrack& track,
+        mixxx::audio::SampleRate sampleRate,
+        mixxx::audio::ChannelCount channelCount,
+        SINT frameLength) {
+    if (m_rgSettings.isAnalyzerDisabled(2, track.getTrack()) || frameLength <= 0) {
+        qDebug() << "Skipping AnalyzerEbur128";
         return false;
     }
-    if (!isInitialized()) {
-        m_pState = ebur128_init(2u,
-                static_cast<unsigned long>(sampleRate),
-                EBUR128_MODE_I);
-    }
-    return isInitialized();
-}
-
-bool AnalyzerEbur128::isDisabledOrLoadStoredSuccess(TrackPointer tio) const {
-    return m_rgSettings.isAnalyzerDisabled(2, tio);
+    DEBUG_ASSERT(m_pState == nullptr);
+    m_pState = ebur128_init(
+            channelCount,
+            sampleRate,
+            EBUR128_MODE_I);
+    return m_pState != nullptr;
 }
 
 void AnalyzerEbur128::cleanup() {
-    if (isInitialized()) {
+    if (m_pState) {
         ebur128_destroy(&m_pState);
         // ebur128_destroy clears the pointer but let's not rely on that.
         m_pState = nullptr;
     }
-    DEBUG_ASSERT(!isInitialized());
 }
 
-void AnalyzerEbur128::cleanup(TrackPointer tio) {
-    Q_UNUSED(tio);
-    cleanup();
-}
-
-void AnalyzerEbur128::process(const CSAMPLE *pIn, const int iLen) {
-    if (!isInitialized()) {
-        return;
+bool AnalyzerEbur128::processSamples(const CSAMPLE* pIn, SINT count) {
+    VERIFY_OR_DEBUG_ASSERT(m_pState) {
+        return false;
     }
-    ScopedTimer t("AnalyzerEbur128::process()");
-    size_t frames = iLen / 2;
+    ScopedTimer t(QStringLiteral("AnalyzerEbur128::processSamples()"));
+    size_t frames = count / m_pState->channels;
     int e = ebur128_add_frames_float(m_pState, pIn, frames);
     VERIFY_OR_DEBUG_ASSERT(e == EBUR128_SUCCESS) {
-        qWarning() << "AnalyzerEbur128::process() failed with" << e;
-        return;
+        qWarning() << "AnalyzerEbur128::processSamples() failed with" << e;
+        return false;
     }
+    return true;
 }
 
-void AnalyzerEbur128::finalize(TrackPointer tio) {
-    if (!isInitialized()) {
+void AnalyzerEbur128::storeResults(TrackPointer pTrack) {
+    VERIFY_OR_DEBUG_ASSERT(m_pState) {
         return;
     }
     double averageLufs;
     int e = ebur128_loudness_global(m_pState, &averageLufs);
-    cleanup(tio);
     VERIFY_OR_DEBUG_ASSERT(e == EBUR128_SUCCESS) {
-        qWarning() << "AnalyzerEbur128::finalize() failed with" << e;
+        qWarning() << "AnalyzerEbur128::storeResults() failed with" << e;
         return;
     }
-    if (averageLufs == -HUGE_VAL || averageLufs == 0.0) {
-        qWarning() << "AnalyzerEbur128::finalize() averageLufs invalid:"
-                 << averageLufs;
+    if (averageLufs == -HUGE_VAL ||
+            averageLufs == HUGE_VAL ||
+            // This catches 0 and abnormal values inf and -inf (that may have
+            // slipped through in libebur128 for some reason.
+            !util_isnormal(averageLufs)) {
+        qWarning() << "AnalyzerEbur128::storeResults() averageLufs invalid:"
+                   << averageLufs;
         return;
     }
 
     const double fReplayGain2 = kReplayGain2ReferenceLUFS - averageLufs;
-    mixxx::ReplayGain replayGain(tio->getReplayGain());
+    mixxx::ReplayGain replayGain(pTrack->getReplayGain());
     replayGain.setRatio(db2ratio(fReplayGain2));
-    tio->setReplayGain(replayGain);
-    qDebug() << "ReplayGain 2.0 (libebur128) result is" << fReplayGain2 << "dB for" << tio->getLocation();
+    pTrack->setReplayGain(replayGain);
+    qDebug() << "ReplayGain 2.0 (libebur128) result is" << fReplayGain2
+             << "dB for" << pTrack->getFileInfo();
 }

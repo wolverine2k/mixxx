@@ -1,21 +1,4 @@
-/**
- * @file portmidicontroller.h
- * @author Albert Santoni alberts@mixxx.org
- * @author Sean M. Pappalardo  spappalardo@mixxx.org
- * @date Thu 15 Mar 2012
- * @brief PortMidi-based MIDI backend
- *
- * This class is represents a MIDI device, either physical or software.
- * It uses the PortMidi API to send and receive MIDI messages to/from the device.
- * It's important to note that PortMidi treats input and output on a single
- * physical device as two separate half-duplex devices. In this class, we wrap
- * those together into a single device, which is why the constructor takes
- * both arguments pertaining to both input and output "devices".
- *
- */
-
-#ifndef PORTMIDICONTROLLER_H
-#define PORTMIDICONTROLLER_H
+#pragma once
 
 #include <portmidi.h>
 
@@ -50,24 +33,59 @@
 #define MIXXX_PORTMIDI_BUFFER_LEN 1024
 
 // Length of SysEx buffer in byte
-#define MIXXX_SYSEX_BUFFER_LEN 1024 
+#define MIXXX_SYSEX_BUFFER_LEN 1024
 
 // String to display for no MIDI devices present
 #define MIXXX_PORTMIDI_NO_DEVICE_STRING "None"
 
-// A PortMidi-based implementation of MidiController
+/// PortMidi-based implementation of MidiController
+///
+/// This class is represents a MIDI device, either physical or software.
+/// It uses the PortMidi API to send and receive MIDI messages to/from the device.
+/// It's important to note that PortMidi treats input and output on a single
+/// physical device as two separate half-duplex devices. In this class, we wrap
+/// those together into a single device, which is why the constructor takes
+/// both arguments pertaining to both input and output "devices".
 class PortMidiController : public MidiController {
     Q_OBJECT
   public:
     PortMidiController(const PmDeviceInfo* inputDeviceInfo,
-                       const PmDeviceInfo* outputDeviceInfo,
-                       int inputDeviceIndex,
-                       int outputDeviceIndex);
+            const PmDeviceInfo* outputDeviceInfo,
+            int inputDeviceIndex,
+            int outputDeviceIndex);
     ~PortMidiController() override;
 
+    PhysicalTransportProtocol getPhysicalTransportProtocol() const override {
+        return PhysicalTransportProtocol::UNKNOWN;
+    }
+
+    QString getVendorString() const override {
+        return QString();
+    }
+    QString getProductString() const override {
+        if (m_pInputDevice) {
+            return QString::fromLocal8Bit(m_pInputDevice->info()->name);
+        }
+        if (m_pOutputDevice) {
+            return QString::fromLocal8Bit(m_pOutputDevice->info()->name);
+        }
+        return QString();
+    }
+    std::optional<uint16_t> getVendorId() const override {
+        return std::nullopt;
+    }
+    std::optional<uint16_t> getProductId() const override {
+        return std::nullopt;
+    }
+    QString getSerialNumber() const override {
+        return QString();
+    }
+
+    std::optional<uint8_t> getUsbInterfaceNumber() const override {
+        return std::nullopt;
+    }
+
   private slots:
-    int open() override;
-    int close() override;
     bool poll() override;
 
   protected:
@@ -76,9 +94,12 @@ class PortMidiController : public MidiController {
                       unsigned char byte2) override;
 
   private:
+    int open(const QString& resourcePath) override;
+    int close() override;
+
     // The sysex data must already contain the start byte 0xf0 and the end byte
     // 0xf7.
-    void send(QByteArray data) override;
+    bool sendBytes(const QByteArray& data) override;
 
     bool isPolling() const override {
         return true;
@@ -104,5 +125,3 @@ class PortMidiController : public MidiController {
 
     friend class PortMidiControllerTest;
 };
-
-#endif

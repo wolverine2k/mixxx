@@ -1,27 +1,8 @@
-/***************************************************************************
-                          sounddevice.cpp
-                             -------------------
-    begin                : Sun Aug 12, 2007, past my bedtime
-    copyright            : (C) 2007 Albert Santoni
-    email                : gamegod \a\t users.sf.net
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
 #include "soundio/sounddevice.h"
 
-#include <QtDebug>
-#include <cstring> // for memcpy and strcmp
-
-#include "soundio/soundmanager.h"
+#include "soundio/soundmanagerconfig.h"
 #include "soundio/soundmanagerutil.h"
+#include "soundmanagerconfig.h"
 #include "util/debug.h"
 #include "util/defs.h"
 #include "util/sample.h"
@@ -29,74 +10,66 @@
 SoundDevice::SoundDevice(UserSettingsPointer config, SoundManager* sm)
         : m_pConfig(config),
           m_pSoundManager(sm),
-          m_strInternalName("Unknown Soundcard"),
           m_strDisplayName("Unknown Soundcard"),
-          m_iNumOutputChannels(2),
-          m_iNumInputChannels(2),
-          m_dSampleRate(44100.0),
+          m_numOutputChannels(mixxx::audio::ChannelCount::stereo()),
+          m_numInputChannels(mixxx::audio::ChannelCount::stereo()),
+          m_sampleRate(SoundManagerConfig::kMixxxDefaultSampleRate),
           m_hostAPI("Unknown API"),
-          m_framesPerBuffer(0) {
+          m_configFramesPerBuffer(0) {
 }
 
-SoundDevice::~SoundDevice() {
+mixxx::audio::ChannelCount SoundDevice::getNumInputChannels() const {
+    return m_numInputChannels;
 }
 
-int SoundDevice::getNumInputChannels() const {
-    return m_iNumInputChannels;
+mixxx::audio::ChannelCount SoundDevice::getNumOutputChannels() const {
+    return m_numOutputChannels;
 }
 
-int SoundDevice::getNumOutputChannels() const {
-    return m_iNumOutputChannels;
+void SoundDevice::setSampleRate(mixxx::audio::SampleRate sampleRate) {
+    m_sampleRate = sampleRate.isValid() ? sampleRate : SoundManagerConfig::kMixxxDefaultSampleRate;
 }
 
-void SoundDevice::setSampleRate(double sampleRate) {
-    if (sampleRate <= 0.0) {
-        // this is the default value used elsewhere in this file
-        sampleRate = 44100.0;
-    }
-    m_dSampleRate = sampleRate;
-}
-
-void SoundDevice::setFramesPerBuffer(unsigned int framesPerBuffer) {
-    if (framesPerBuffer * 2 > MAX_BUFFER_LEN) {
+void SoundDevice::setConfigFramesPerBuffer(unsigned int framesPerBuffer) {
+    if (framesPerBuffer > kMaxEngineFrames) {
         // framesPerBuffer * 2 because a frame will generally end up
         // being 2 samples and MAX_BUFFER_LEN is a number of samples
         // this isn't checked elsewhere, so...
         reportFatalErrorAndQuit("framesPerBuffer too big in "
                                 "SoundDevice::setFramesPerBuffer(uint)");
     }
-    m_framesPerBuffer = framesPerBuffer;
+    m_configFramesPerBuffer = framesPerBuffer;
 }
 
-SoundDeviceError SoundDevice::addOutput(const AudioOutputBuffer &out) {
+SoundDeviceStatus SoundDevice::addOutput(const AudioOutputBuffer& out) {
     // Check if the output channels are already used
     foreach (AudioOutputBuffer myOut, m_audioOutputs) {
         if (out.channelsClash(myOut)) {
-            return SOUNDDEVICE_ERROR_DUPLICATE_OUTPUT_CHANNEL;
+            return SoundDeviceStatus::ErrorDuplicateOutputChannel;
         }
     }
     if (out.getChannelGroup().getChannelBase()
             + out.getChannelGroup().getChannelCount() > getNumOutputChannels()) {
-        return SOUNDDEVICE_ERROR_EXCESSIVE_OUTPUT_CHANNEL;
+        return SoundDeviceStatus::ErrorExcessiveOutputChannel;
     }
     m_audioOutputs.append(out);
-    return SOUNDDEVICE_ERROR_OK;
+    return SoundDeviceStatus::Ok;
 }
 
 void SoundDevice::clearOutputs() {
     m_audioOutputs.clear();
 }
 
-SoundDeviceError SoundDevice::addInput(const AudioInputBuffer &in) {
+SoundDeviceStatus SoundDevice::addInput(const AudioInputBuffer& in) {
     // DON'T check if the input channels are already used, there's no reason
     // we can't send the same inputted samples to different places in mixxx.
     // -- bkgood 20101108
     if (in.getChannelGroup().getChannelBase()
             + in.getChannelGroup().getChannelCount() > getNumInputChannels()) {
-        return SOUNDDEVICE_ERROR_EXCESSIVE_INPUT_CHANNEL;
+        return SoundDeviceStatus::ErrorExcessiveInputChannel;
     }
     m_audioInputs.append(in);
-    return SOUNDDEVICE_ERROR_OK;
+    return SoundDeviceStatus::Ok;
 }
 
 void SoundDevice::clearInputs() {
@@ -104,17 +77,13 @@ void SoundDevice::clearInputs() {
 }
 
 bool SoundDevice::operator==(const SoundDevice &other) const {
-    return this->getInternalName() == other.getInternalName();
-}
-
-bool SoundDevice::operator==(const QString &other) const {
-    return getInternalName() == other;
+    return m_deviceId == other.getDeviceId();
 }
 
 void SoundDevice::composeOutputBuffer(CSAMPLE* outputBuffer,
-                                      const unsigned int framesToCompose,
-                                      const unsigned int framesReadOffset,
-                                      const unsigned int iFrameSize) {
+                                      const SINT framesToCompose,
+                                      const SINT framesReadOffset,
+                                      const int iFrameSize) {
     //qDebug() << "SoundDevice::composeOutputBuffer()"
     //         << device->getInternalName()
     //         << framesToCompose << iFrameSize;
@@ -149,20 +118,20 @@ void SoundDevice::composeOutputBuffer(CSAMPLE* outputBuffer,
             if (iChannelCount == 1) {
                 // All AudioOutputs are stereo as of Mixxx 1.12.0. If we have a mono
                 // output then we need to downsample.
-                for (unsigned int iFrameNo = 0; iFrameNo < framesToCompose; ++iFrameNo) {
+                for (SINT iFrameNo = 0; iFrameNo < framesToCompose; ++iFrameNo) {
                     // iFrameBase is the "base sample" in a frame (ie. the first
                     // sample in a frame)
-                    const unsigned int iFrameBase = iFrameNo * iFrameSize;
+                    const SINT iFrameBase = iFrameNo * iFrameSize;
                     outputBuffer[iFrameBase + iChannelBase] = SampleUtil::clampSample(
                             (pAudioOutputBuffer[iFrameNo * 2] +
                                     pAudioOutputBuffer[iFrameNo * 2 + 1]) / 2.0f);
                 }
             } else {
-                for (unsigned int iFrameNo = 0; iFrameNo < framesToCompose; ++iFrameNo) {
+                for (SINT iFrameNo = 0; iFrameNo < framesToCompose; ++iFrameNo) {
                     // iFrameBase is the "base sample" in a frame (ie. the first
                     // sample in a frame)
-                    const unsigned int iFrameBase = iFrameNo * iFrameSize;
-                    const unsigned int iLocalFrameBase = iFrameNo * iChannelCount;
+                    const SINT iFrameBase = iFrameNo * iFrameSize;
+                    const SINT iLocalFrameBase = iFrameNo * iChannelCount;
 
                     // this will make sure a sample from each channel is copied
                     for (int iChannel = 0; iChannel < iChannelCount; ++iChannel) {
@@ -182,9 +151,9 @@ void SoundDevice::composeOutputBuffer(CSAMPLE* outputBuffer,
 }
 
 void SoundDevice::composeInputBuffer(const CSAMPLE* inputBuffer,
-                                     const unsigned int framesToPush,
-                                     const unsigned int framesWriteOffset,
-                                     const unsigned int iFrameSize) {
+                                     const SINT framesToPush,
+                                     const SINT framesWriteOffset,
+                                     const int iFrameSize) {
     //qDebug() << "SoundManager::pushBuffer"
     //         << framesToPush << framesWriteOffset << iFrameSize;
     // This function is called a *lot* and is a big source of CPU usage.
@@ -199,7 +168,7 @@ void SoundDevice::composeInputBuffer(const CSAMPLE* inputBuffer,
         const AudioInputBuffer& in = m_audioInputs.at(0);
         CSAMPLE* pInputBuffer = in.getBuffer(); // Always Stereo
         pInputBuffer = &pInputBuffer[framesWriteOffset * 2];
-        for (unsigned int iFrameNo = 0; iFrameNo < framesToPush; ++iFrameNo) {
+        for (SINT iFrameNo = 0; iFrameNo < framesToPush; ++iFrameNo) {
             pInputBuffer[iFrameNo * 2] =
                     inputBuffer[iFrameNo];
             pInputBuffer[iFrameNo * 2 + 1] =
@@ -216,8 +185,7 @@ void SoundDevice::composeInputBuffer(const CSAMPLE* inputBuffer,
         // Non Stereo input (iFrameSize != 2)
         // Do crazy deinterleaving of the audio into the correct m_inputBuffers.
 
-        for (QList<AudioInputBuffer>::const_iterator i = m_audioInputs.begin(),
-                     e = m_audioInputs.end(); i != e; ++i) {
+        for (auto i = m_audioInputs.constBegin(), e = m_audioInputs.constEnd(); i != e; ++i) {
             const AudioInputBuffer& in = *i;
             ChannelGroup chanGroup = in.getChannelGroup();
             int iChannelCount = chanGroup.getChannelCount();
@@ -225,11 +193,11 @@ void SoundDevice::composeInputBuffer(const CSAMPLE* inputBuffer,
             CSAMPLE* pInputBuffer = in.getBuffer();
             pInputBuffer = &pInputBuffer[framesWriteOffset * 2];
 
-            for (unsigned int iFrameNo = 0; iFrameNo < framesToPush; ++iFrameNo) {
+            for (SINT iFrameNo = 0; iFrameNo < framesToPush; ++iFrameNo) {
                 // iFrameBase is the "base sample" in a frame (ie. the first
                 // sample in a frame)
-                unsigned int iFrameBase = iFrameNo * iFrameSize;
-                unsigned int iLocalFrameBase = iFrameNo * 2;
+                SINT iFrameBase = iFrameNo * iFrameSize;
+                SINT iLocalFrameBase = iFrameNo * 2;
 
                 if (iChannelCount == 1) {
                     pInputBuffer[iLocalFrameBase] =
@@ -247,11 +215,9 @@ void SoundDevice::composeInputBuffer(const CSAMPLE* inputBuffer,
     }
 }
 
-void SoundDevice::clearInputBuffer(const unsigned int framesToPush,
-                                   const unsigned int framesWriteOffset) {
-
-    for (QList<AudioInputBuffer>::const_iterator i = m_audioInputs.begin(),
-                 e = m_audioInputs.end(); i != e; ++i) {
+void SoundDevice::clearInputBuffer(const SINT framesToPush,
+                                   const SINT framesWriteOffset) {
+    for (auto i = m_audioInputs.constBegin(), e = m_audioInputs.constEnd(); i != e; ++i) {
         const AudioInputBuffer& in = *i;
         CSAMPLE* pInputBuffer = in.getBuffer();  // Always stereo
         SampleUtil::clear(&pInputBuffer[framesWriteOffset * 2], framesToPush * 2);

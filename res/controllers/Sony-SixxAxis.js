@@ -10,7 +10,8 @@ function SonySixxAxisController() {
     this.controller.activeDeck = 1;
 
     this.registerInputPackets = function() {
-        packet = new HIDPacket("control",[],49);
+        const packet = new HIDPacket("control", 0);
+        packet.length = 49;
 
         // Toggle buttons
         packet.addControl("hid","select",2,"B",0x1);
@@ -112,7 +113,7 @@ SonySixxAxis.init = function(id) {
             return;
         controller.timers[timer_id] = engine.beginTimer(
             interval,
-            "SonySixxAxis.controller.autorepeatTimer()"
+            SonySixxAxis.controller.autorepeatTimer // FIXME: autorepeatTimer is not defined?
         )
     }
     HIDDebug("Sony SixxAxis controller initialized: " + SonySixxAxis.id);
@@ -138,7 +139,7 @@ SonySixxAxis.registerCallbacks = function(id) {
         return;
     }
     if (controller==undefined) {
-        HIDDebug("Error registrering callbacks: controller is undefined");
+        HIDDebug("Error registering callbacks: controller is undefined");
         return;
     }
 
@@ -183,9 +184,9 @@ SonySixxAxis.front_left = function(field) {
         return;
     if (!controller.modifiers.get("shift_left"))
         return;
-    if (field.name=="button_top_left") 
+    if (field.name=="button_top_left")
         engine.setValue("[Playlist]","SelectPrevPlaylist",true);
-    if (field.name=="button_bottom_left") 
+    if (field.name=="button_bottom_left")
         engine.setValue("[Playlist]","SelectNextPlaylist",true);
 }
 
@@ -193,7 +194,7 @@ SonySixxAxis.front_right = function(field) {
     var controller = SonySixxAxis.controller;
     if (field.value==controller.buttonStates.released)
         return;
-    if (!controller.modifiers.get("shift_right")) 
+    if (!controller.modifiers.get("shift_right"))
         return;
     if (field.name=="button_top_right") {
         engine.setValue("[Playlist]","SelectPrevTrack",true);
@@ -217,7 +218,7 @@ SonySixxAxis.left_jog = function(field) {
     if (group==undefined)
         return;
     if (field.name=="jog_left_y") {
-        if (field.delta<=0) 
+        if (field.delta<=0)
             return;
         old_value = engine.getValue(group,"rate");
         if (field.value<115)
@@ -237,7 +238,7 @@ SonySixxAxis.right_jog = function(field) {
     if (group==undefined)
         return;
     if (field.name=="jog_right_y") {
-        if (field.delta<=0) 
+        if (field.delta<=0)
             return;
         old_value = engine.getValue(group,"rate");
         if (field.value<115)
@@ -252,7 +253,7 @@ SonySixxAxis.right_jog = function(field) {
 
 SonySixxAxis.left_bend = function(field) {
     var controller = SonySixxAxis.controller;
-    if (controller.modifiers.get("shift_left")) 
+    if (controller.modifiers.get("shift_left"))
         return;
     if (field.name=="pressure_top_left") {
         SonySixxAxis.jog_bend("deck1","down",field.value);
@@ -272,7 +273,7 @@ SonySixxAxis.left_bend = function(field) {
 
 SonySixxAxis.right_bend = function(field) {
     var controller = SonySixxAxis.controller;
-    if (controller.modifiers.get("shift_right")) 
+    if (controller.modifiers.get("shift_right"))
         return;
     if (field.name=="pressure_top_right") {
         SonySixxAxis.jog_bend("deck2","down",field);
@@ -301,5 +302,3 @@ SonySixxAxis.jog_bend = function(group,direction,value) {
     if (direction=="down")
         engine.setValue(group,"jog",-6);
 }
-
-

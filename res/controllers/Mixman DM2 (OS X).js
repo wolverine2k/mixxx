@@ -92,11 +92,11 @@ DM2.wheel = function (channel, control, value, status ) {
 	engine.setValue( "[Channel" + DM2.pitch2deck[channel] + "]", "jog", newValue/512.0 );
 
 // 	if( channel == 0 ) {
-// 		if( engine.getValue("[Channel2]","VuMeter") > 0.6 )
+// 		if( engine.getValue("[Channel2]","vu_meter") > 0.6 )
 // 			print( "*" );
 // 		else
 // 			print( "" );
-// 		print ("playpos: " + engine.getValue("[Channel2]","VuMeter"));
+// 		print ("playpos: " + engine.getValue("[Channel2]","vu_meter"));
 // 	}
 /*	print( "=====DM2:" );
 	print( " - channel: "  + channel  );
@@ -150,7 +150,7 @@ DM2.filter = function (channel, control, value, status) {
 	else if( f < 0.0 )
 		f = 0.0;
 
-// 	print( "settiing [Channel" + deck + "] " + DM2.cc2mixxx[control] + " to " + f );
+// 	print( "setting [Channel" + deck + "] " + DM2.cc2mixxx[control] + " to " + f );
 	engine.setValue( "[Channel" + deck + "]", DM2.cc2mixxx[control], f );
 	DM2.filter_active = 1;
 }

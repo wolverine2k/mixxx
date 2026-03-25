@@ -1,7 +1,9 @@
-#ifndef MIXER_SAMPLERBANK_H
-#define MIXER_SAMPLERBANK_H
+#pragma once
 
 #include <QObject>
+#include <memory>
+
+#include "preferences/usersettings.h"
 
 class ControlObject;
 class ControlProxy;
@@ -13,8 +15,8 @@ class PlayerManager;
 class SamplerBank : public QObject {
     Q_OBJECT
   public:
-    SamplerBank(PlayerManager* pPlayerManager);
-    virtual ~SamplerBank();
+    SamplerBank(UserSettingsPointer pConfig,
+            PlayerManager* pPlayerManager);
 
     bool saveSamplerBankToPath(const QString& samplerBankPath);
     bool loadSamplerBankFromPath(const QString& samplerBankPath);
@@ -24,10 +26,9 @@ class SamplerBank : public QObject {
     void slotLoadSamplerBank(double v);
 
   private:
+    UserSettingsPointer m_pConfig;
     PlayerManager* m_pPlayerManager;
-    ControlObject* m_pCOLoadBank;
-    ControlObject* m_pCOSaveBank;
+    std::unique_ptr<ControlObject> m_pCOLoadBank;
+    std::unique_ptr<ControlObject> m_pCOSaveBank;
     ControlProxy* m_pCONumSamplers;
 };
-
-#endif /* MIXER_SAMPLERBANK_H */

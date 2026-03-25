@@ -1,181 +1,108 @@
 <!--
 Description:
   Container for EffectUnits 1 & 2.
-  In netbook mode they are pushed apart by several spacers which also
-  aligns them to decks (resp. channel mixer or cover art).
-  For each EffectUnit there's a minimized and a full mode.
+  Units are pushed apart by spacers, see fx_units_spacer.xml.
 -->
 <Template>
+  <SetVariable name="FxRack">1</SetVariable>
   <WidgetGroup>
-    <ObjectName>AlignTop</ObjectName>
-    <SizePolicy>me,min</SizePolicy>
-    <Layout>vertical</Layout>
+    <ObjectName>FxUnits12</ObjectName>
+    <SizePolicy>me,max</SizePolicy>
+    <Layout>horizontal</Layout>
     <Children>
 
-      <WidgetGroup><!-- EffectUnits 1 & 2 -->
-        <ObjectName>EffectUnits12</ObjectName>
-        <SizePolicy>me,max</SizePolicy>
-        <Layout>horizontal</Layout>
+      <!-- Each EffectUnit's collapsed and expanded version were previously placed
+          side by side. This resulted in a noticeable flickering when swapping
+          visibility of both versions, typically when switching from the one that's
+          later in xml (collapsed) to the earlier (expanded), since none of both versions
+          was visible at that moment and opposing EffectUnit tries to expand horizontally.
+          Putting both versions into a vertical layout fixes this issue.
+          UPDATE: now using WidgetStacks, it appears they are even more stable when switching
+
+          Normally the first widget in stack is shown. currentpage="[XYZ],blabla" makes the
+          WidgetStack remember which item was visible when stack was hidden or Mixxx restarted.
+          To make this persistent, I used the same CO that controls if the parameters are visible.
+          For that to work index of item in stack must match ...,show_parameters
+      -->
+
+      <!-- EffectUnit 1 -->
+      <WidgetStack currentpage="[EffectRack1_EffectUnit1],show_parameters" persist="true">
+        <Size>502min,-1min</Size>
         <Children>
 
-          <WidgetGroup><!-- EffectUnit 1 -->
-            <ObjectName>EffectUnit1_maxi</ObjectName>
-            <Layout>vertical</Layout>
-            <SizePolicy>min,max</SizePolicy>
-            <Children>
-              <Template src="skin:fx_unit_left.xml">
-                <SetVariable name="EffectRack">1</SetVariable>
-                <SetVariable name="EffectUnit">1</SetVariable>
-                <SetVariable name="fxGroup">EffectRack1_EffectUnit1</SetVariable>
-              </Template>
-            </Children>
-            <Connection>
-              <ConfigKey persist="true">[EffectRack1_EffectUnit1],show_parameters</ConfigKey>
-              <BindProperty>visible</BindProperty>
-            </Connection>
-          </WidgetGroup>
-
+          <!-- EffectUnit 1 mini -->
           <WidgetGroup>
-            <ObjectName>EffectUnit1_mini</ObjectName>
             <Layout>vertical</Layout>
             <SizePolicy>min,me</SizePolicy>
             <Children>
-              <Template src="skin:fx_unit_left_mini.xml">
-                <SetVariable name="EffectRack">1</SetVariable>
-                <SetVariable name="EffectUnit">1</SetVariable>
-                <SetVariable name="fxGroup">EffectRack1_EffectUnit1</SetVariable>
+              <Template src="skins:Tango/fx/unit_left_mini.xml">
+                <SetVariable name="FxUnit">1</SetVariable>
               </Template>
-              <WidgetGroup><Size>1min,0me</Size></WidgetGroup>
+              <WidgetGroup><Size>1min,5me</Size></WidgetGroup>
             </Children>
-            <Connection>
-              <ConfigKey persist="true">[EffectRack1_EffectUnit1],show_parameters</ConfigKey>
-              <Transform><Not/></Transform>
-              <BindProperty>visible</BindProperty>
-            </Connection>
-          </WidgetGroup><!-- /EffectUnit 1 -->
+          </WidgetGroup>
 
-          <WidgetGroup><!-- Spacers for normal width -->
-            <Layout>horizontal</Layout>
-            <SizePolicy>min,min</SizePolicy>
-            <Children>
-
-              <!-- Spacer to keep Deck & FX unit aligned -->
-              <WidgetGroup><Size>108f,1min</Size><Children/>
-                <Connection>
-                  <ConfigKey>[Tango],normal_mode</ConfigKey>
-                  <BindProperty>visible</BindProperty>
-                </Connection>
-              </WidgetGroup>
-
-              <WidgetGroup> <!-- Spacer to keep Deck & FX unit aligned without Pitch fader-->
-                <Size>106f,1min</Size>
-                <Children/>
-                <Connection>
-                  <ConfigKey>[Tango],pitch_fader</ConfigKey>
-                  <BindProperty>visible</BindProperty>
-                </Connection>
-              </WidgetGroup>
-
-              <WidgetGroup><!-- VU Meter spacer when Channel Mixer is hidden -->
-                <Layout>vertical</Layout>
-                <SizePolicy>min,min</SizePolicy>
-                <Children>
-                  <WidgetGroup>
-                    <Layout>vertical</Layout>
-                    <Size>22f,1min</Size>
-                    <Children>
-                    </Children>
-                    <Connection>
-                      <ConfigKey>[Tango],vumeter</ConfigKey>
-                      <BindProperty>visible</BindProperty>
-                    </Connection>
-                  </WidgetGroup>
-                </Children>
-                <Connection>
-                  <ConfigKey>[Tango],channel_mixer</ConfigKey>
-                  <BindProperty>visible</BindProperty>
-                  <Transform><Not/></Transform>
-                </Connection>
-              </WidgetGroup><!-- /VU Meter spacer when Channel Mixer is hidden -->
-            </Children>
-            <Connection>
-              <ConfigKey>[Tango],normal_mode</ConfigKey>
-              <BindProperty>visible</BindProperty>
-            </Connection>
-          </WidgetGroup><!-- /Spacers for normal width -->
-
-          <WidgetGroup><!-- Spacer for netbook mode -->
-            <Size>4f,1min</Size>
-            <Children/>
-            <Connection>
-              <ConfigKey>[Tango],netbook_mode</ConfigKey>
-              <BindProperty>visible</BindProperty>
-            </Connection>
-          </WidgetGroup><!-- /Spacer for netbook mode -->
-
-          <WidgetGroup><!-- EffectUnit 2 -->
-            <ObjectName>EffectUnit2_maxi</ObjectName>
+          <!-- EffectUnit 1 maxi -->
+          <WidgetGroup trigger="[EffectRack1_EffectUnit1],show_parameters" on_hide_select="0" persist="true">
             <Layout>vertical</Layout>
             <SizePolicy>min,max</SizePolicy>
             <Children>
-              <Template src="skin:fx_unit_right.xml">
-                <SetVariable name="EffectRack">1</SetVariable>
-                <SetVariable name="EffectUnit">2</SetVariable>
-                <SetVariable name="fxGroup">EffectRack1_EffectUnit2</SetVariable>
+              <Template src="skins:Tango/fx/unit_left.xml">
+                <SetVariable name="FxUnit">1</SetVariable>
               </Template>
+              <WidgetGroup><Size>1min,5f</Size></WidgetGroup>
             </Children>
-            <Connection>
-              <ConfigKey persist="true">[EffectRack1_EffectUnit2],show_parameters</ConfigKey>
-              <BindProperty>visible</BindProperty>
-            </Connection>
           </WidgetGroup>
 
-          <WidgetGroup>
-            <ObjectName>EffectUnit2_mini</ObjectName>
-            <Layout>vertical</Layout>
-            <SizePolicy>min,me</SizePolicy>
-            <Children>
-              <Template src="skin:fx_unit_right_mini.xml">
-                <SetVariable name="EffectRack">1</SetVariable>
-                <SetVariable name="EffectUnit">2</SetVariable>
-                <SetVariable name="fxGroup">EffectRack1_EffectUnit2</SetVariable>
-              </Template>
-              <WidgetGroup><Size>1min,0me</Size></WidgetGroup>
-            </Children>
-            <Connection>
-              <ConfigKey persist="true">[EffectRack1_EffectUnit2],show_parameters</ConfigKey>
-              <Transform><Not/></Transform>
-              <BindProperty>visible</BindProperty>
-            </Connection>
-          </WidgetGroup><!-- /EffectUnit 2 -->
-
-        </Children>
-      </WidgetGroup><!-- /EffectUnits 1 & 2 -->
-
-      <!-- Spacer between [Decks 1/2 + FX Units 1/2] and
-                          [Decks 3/4 + FX Units 3/4] -->
-      <WidgetGroup>
-        <SizePolicy>me,min</SizePolicy>
-        <Layout>vertical</Layout>
-        <Children>
-          <WidgetGroup><Size>1me,7f</Size><Children/>
-            <Connection>
-              <ConfigKey persist="true">[Master],show_4decks</ConfigKey>
-              <BindProperty>visible</BindProperty>
-            </Connection>
-          </WidgetGroup>
         </Children>
         <Connection>
-          <ConfigKey persist="true">[Tango],2or4_fxUnits</ConfigKey>
+          <ConfigKey persist="true">[Skin],show_effectrack</ConfigKey>
           <BindProperty>visible</BindProperty>
         </Connection>
-      </WidgetGroup><!-- Spacer between [Decks 1/2 + FX Units 1/2] and
-                          [Decks 3/4 + FX Units 3/4] -->
+      </WidgetStack><!-- /EffectUnit 1 -->
+
+      <WidgetGroup>
+        <MinimumSize>6,0</MinimumSize>
+        <MaximumSize>10,0</MaximumSize>
+        <SizePolicy>me,min</SizePolicy>
+      </WidgetGroup>
+
+      <!-- EffectUnit 2 -->
+      <WidgetStack currentpage="[EffectRack1_EffectUnit2],show_parameters" persist="true">
+        <Size>502min,-1min</Size>
+        <Children>
+
+          <!-- EffectUnit 2 mini -->
+          <WidgetGroup>
+            <Layout>vertical</Layout>
+            <SizePolicy>min,me</SizePolicy>
+            <Children>
+              <Template src="skins:Tango/fx/unit_right_mini.xml">
+                <SetVariable name="FxUnit">2</SetVariable>
+              </Template>
+              <WidgetGroup><Size>1min,5me</Size></WidgetGroup>
+            </Children>
+          </WidgetGroup>
+
+          <!-- EffectUnit 2 maxi -->
+          <WidgetGroup trigger="[EffectRack1_EffectUnit2],show_parameters" on_hide_select="1" persist="true">
+            <Layout>vertical</Layout>
+            <SizePolicy>min,max</SizePolicy>
+            <Children>
+              <Template src="skins:Tango/fx/unit_right.xml">
+                <SetVariable name="FxUnit">2</SetVariable>
+              </Template>
+              <WidgetGroup><Size>1min,5f</Size></WidgetGroup>
+            </Children>
+          </WidgetGroup>
+
+        </Children>
+        <Connection>
+          <ConfigKey persist="true">[Skin],show_effectrack</ConfigKey>
+          <BindProperty>visible</BindProperty>
+        </Connection>
+      </WidgetStack><!-- /EffectUnit 2 -->
 
     </Children>
-    <Connection>
-      <ConfigKey persist="true">[EffectRack1],show</ConfigKey>
-      <BindProperty>visible</BindProperty>
-    </Connection>
-  </WidgetGroup>
+  </WidgetGroup><!-- /EffectUnits 1 & 2 -->
 </Template>

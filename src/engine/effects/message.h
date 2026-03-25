@@ -1,36 +1,30 @@
-#ifndef MESSAGE_H
-#define MESSAGE_H
+#pragma once
 
-#include <QVariant>
 #include <QString>
+#include <QVariant>
 #include <QtGlobal>
+#include <memory>
 
-#include "util/fifo.h"
-#include "effects/effectchain.h"
+#include "effects/defs.h"
+#include "effects/effectchainmixmode.h"
 #include "engine/channelhandle.h"
+#include "util/messagepipe.h"
 
-const bool kEffectDebugOutput = false;
-
-class EngineEffectRack;
 class EngineEffectChain;
 class EngineEffect;
 
 struct EffectsRequest {
     enum MessageType {
-        // Messages for EngineEffectsManager
-        ADD_EFFECT_RACK = 0,
-        REMOVE_EFFECT_RACK,
-
-        // Messages for EngineEffectRack
-        ADD_CHAIN_TO_RACK,
-        REMOVE_CHAIN_FROM_RACK,
-
         // Messages for EngineEffectChain
+        ADD_EFFECT_CHAIN,
+        REMOVE_EFFECT_CHAIN,
         SET_EFFECT_CHAIN_PARAMETERS,
         ADD_EFFECT_TO_CHAIN,
         REMOVE_EFFECT_FROM_CHAIN,
-        ENABLE_EFFECT_CHAIN_FOR_CHANNEL,
-        DISABLE_EFFECT_CHAIN_FOR_CHANNEL,
+        // Effects cannot currently be toggled for output channels;
+        // the outputs that effects are applied to are hardwired in EngineMixer
+        ENABLE_EFFECT_CHAIN_FOR_INPUT_CHANNEL,
+        DISABLE_EFFECT_CHAIN_FOR_INPUT_CHANNEL,
 
         // Messages for EngineEffect
         SET_EFFECT_PARAMETERS,
@@ -40,27 +34,14 @@ struct EffectsRequest {
         NUM_REQUEST_TYPES
     };
 
+    // Creates a new uninitialized EffectsRequest.  Callers are responsible for making sure that
+    // they initialize all the values of the struct corresponding to the type they select.
     EffectsRequest()
             : type(NUM_REQUEST_TYPES),
               request_id(-1),
-              minimum(0.0),
-              maximum(0.0),
-              default_value(0.0),
               value(0.0) {
-        pTargetRack = NULL;
-        pTargetChain = NULL;
-        pTargetEffect = NULL;
-#define CLEAR_STRUCT(x) memset(&x, 0, sizeof(x));
-        CLEAR_STRUCT(AddEffectRack);
-        CLEAR_STRUCT(RemoveEffectRack);
-        CLEAR_STRUCT(AddChainToRack);
-        CLEAR_STRUCT(RemoveChainFromRack);
-        CLEAR_STRUCT(AddEffectToChain);
-        CLEAR_STRUCT(RemoveEffectFromChain);
-        CLEAR_STRUCT(SetEffectChainParameters);
-        CLEAR_STRUCT(SetEffectParameters);
-        CLEAR_STRUCT(SetParameterParameters);
-#undef CLEAR_STRUCT
+        pTargetChain = nullptr;
+        pTargetEffect = nullptr;
     }
 
     MessageType type;
@@ -69,15 +50,11 @@ struct EffectsRequest {
     // Target of the message.
     union {
         // Used by:
-        // - ADD_CHAIN_TO_RACK
-        // - REMOVE_CHAIN_FROM_RACK
-        EngineEffectRack* pTargetRack;
-        // Used by:
         // - ADD_EFFECT_TO_CHAIN
         // - REMOVE_EFFECT_FROM_CHAIN
         // - SET_EFFECT_CHAIN_PARAMETERS
-        // - ENABLE_EFFECT_CHAIN_FOR_CHANNEL
-        // - DISABLE_EFFECT_CHAIN_FOR_CHANNEL
+        // - ENABLE_EFFECT_CHAIN_FOR_INPUT_CHANNEL
+        // - DISABLE_EFFECT_CHAIN_FOR_INPUT_CHANNEL
         EngineEffectChain* pTargetChain;
         // Used by:
         // - SET_EFFECT_PARAMETER
@@ -87,19 +64,19 @@ struct EffectsRequest {
     // Message-specific data.
     union {
         struct {
-            EngineEffectRack* pRack;
-        } AddEffectRack;
-        struct {
-            EngineEffectRack* pRack;
-        } RemoveEffectRack;
+            EngineEffectChain* pChain;
+            SignalProcessingStage signalProcessingStage;
+        } AddEffectChain;
         struct {
             EngineEffectChain* pChain;
-            int iIndex;
-        } AddChainToRack;
+            SignalProcessingStage signalProcessingStage;
+        } RemoveEffectChain;
         struct {
-            EngineEffectChain* pChain;
-            int iIndex;
-        } RemoveChainFromRack;
+            ChannelHandle channelHandle;
+        } EnableInputChannelForChain;
+        struct {
+            ChannelHandle channelHandle;
+        } DisableInputChannelForChain;
         struct {
             EngineEffect* pEffect;
             int iIndex;
@@ -110,7 +87,7 @@ struct EffectsRequest {
         } RemoveEffectFromChain;
         struct {
             bool enabled;
-            EffectChain::InsertionType insertion_type;
+            EffectChainMixMode::Type mix_mode;
             double mix;
         } SetEffectChainParameters;
         struct {
@@ -121,17 +98,7 @@ struct EffectsRequest {
         } SetParameterParameters;
     };
 
-    ////////////////////////////////////////////////////////////////////////////
-    // Message-specific, non-POD values that can't be part of the above union.
-    ////////////////////////////////////////////////////////////////////////////
-
-    // Used by ENABLE_EFFECT_CHAIN_FOR_CHANNEL and DISABLE_EFFECT_CHAIN_FOR_CHANNEL.
-    ChannelHandle channel;
-
     // Used by SET_EFFECT_PARAMETER.
-    double minimum;
-    double maximum;
-    double default_value;
     double value;
 };
 
@@ -139,7 +106,6 @@ struct EffectsResponse {
     enum StatusCode {
         OK,
         UNHANDLED_MESSAGE_TYPE,
-        NO_SUCH_RACK,
         NO_SUCH_CHAIN,
         NO_SUCH_EFFECT,
         NO_SUCH_PARAMETER,
@@ -155,7 +121,7 @@ struct EffectsResponse {
               status(NUM_STATUS_CODES) {
     }
 
-    EffectsResponse(const EffectsRequest& request, bool succeeded=false)
+    EffectsResponse(const EffectsRequest& request, bool succeeded = false)
             : request_id(request.request_id),
               success(succeeded),
               status(NUM_STATUS_CODES) {
@@ -175,8 +141,7 @@ typedef MessagePipe<EffectsResponse, EffectsRequest*> EffectsResponsePipe;
 class EffectsRequestHandler {
   public:
     virtual bool processEffectsRequest(
-        const EffectsRequest& message,
-        EffectsResponsePipe* pResponsePipe) = 0;
+            const EffectsRequest& message,
+            EffectsResponsePipe* pResponsePipe) = 0;
+    virtual ~EffectsRequestHandler() = default;
 };
-
-#endif /* MESSAGE_H */

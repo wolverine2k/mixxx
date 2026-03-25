@@ -1,14 +1,11 @@
-#ifndef MIXXX_DBCONNECTIONPOOL_H
-#define MIXXX_DBCONNECTIONPOOL_H
-
+#pragma once
 
 #include <QAtomicInt>
 #include <QThreadStorage>
+#include <memory>
 
-#include "util/db/dbconnection.h"
-#include "util/memory.h"
 #include "util/assert.h"
-
+#include "util/db/dbconnection.h"
 
 namespace mixxx {
 
@@ -19,7 +16,7 @@ class DbConnectionPool final {
   public:
     // Creates a new pool of database connections (one per thread) that
     // all use the same connection parameters. Unique connection names
-    // will be  generated based on the given connection name that serves
+    // will be generated based on the given connection name that serves
     // as the base name (= common prefix).
     static DbConnectionPoolPtr create(
             const DbConnection::Params& params,
@@ -65,6 +62,3 @@ class DbConnectionPool final {
 };
 
 } // namespace mixxx
-
-
-#endif // MIXXX_DBCONNECTIONPOOL_H

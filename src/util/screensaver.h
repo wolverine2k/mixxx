@@ -1,9 +1,10 @@
-#ifndef MIXXX_SCREENSAVER_H
-#define MIXXX_SCREENSAVER_H
+#pragma once
 
-#ifdef Q_OS_MAC
+#include <QtGlobal>
+
+#ifdef Q_OS_MACOS
 #include <IOKit/pwr_mgt/IOPMLib.h>
-#endif // Q_OS_MAC
+#endif // Q_OS_MACOS
 
 namespace mixxx {
 
@@ -24,16 +25,16 @@ private:
 
    static bool s_enabled;
    static bool s_sendActivity;
-#if defined(Q_OS_MAC)
-    /* sleep management */
-    static IOPMAssertionID s_systemSleepAssertionID;
-    static IOPMAssertionID s_userActivityAssertionID;
+#if defined(Q_OS_MACOS)
+   /* sleep management */
+   static IOPMAssertionID s_systemSleepAssertionID;
+   static IOPMAssertionID s_userActivityAssertionID;
+#elif defined(Q_OS_ANDROID)
+   static QJniObject s_wakeLock;
 #elif defined(Q_OS_LINUX)
     static uint32_t s_cookie;
     static int s_saverindex;
-#endif // Q_OS_MAC
+#endif // Q_OS_MACOS
 };
 
 }
-
-#endif // MIXXX_SCREENSAVER_H

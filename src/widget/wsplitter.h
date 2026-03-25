@@ -1,13 +1,12 @@
-#ifndef WSPLITTER_H
-#define WSPLITTER_H
+#pragma once
 
-#include <QDomNode>
-#include <QEvent>
 #include <QSplitter>
 
 #include "preferences/usersettings.h"
-#include "skin/skincontext.h"
 #include "widget/wbasewidget.h"
+
+class QDomNode;
+class SkinContext;
 
 class WSplitter : public QSplitter, public WBaseWidget {
     Q_OBJECT
@@ -26,5 +25,3 @@ class WSplitter : public QSplitter, public WBaseWidget {
     UserSettingsPointer m_pConfig;
     ConfigKey m_configKey;
 };
-
-#endif /* WSPLITTER_H */

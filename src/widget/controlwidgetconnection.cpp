@@ -1,20 +1,49 @@
 #include "widget/controlwidgetconnection.h"
 
-#include "widget/wbasewidget.h"
+#include <QStyle>
+#include <memory>
+
 #include "control/controlproxy.h"
-#include "util/debug.h"
-#include "util/valuetransformer.h"
+#include "moc_controlwidgetconnection.cpp"
 #include "util/assert.h"
+#include "util/parented_ptr.h"
+#include "util/valuetransformer.h"
+#include "widget/wbasewidget.h"
+
+namespace {
+
+QMetaProperty propertyFromWidget(const QWidget* pWidget, const QString& name) {
+    VERIFY_OR_DEBUG_ASSERT(!name.isEmpty()) {
+        return QMetaProperty();
+    }
+    VERIFY_OR_DEBUG_ASSERT(pWidget) {
+        return QMetaProperty();
+    }
+    const QMetaObject* meta = pWidget->metaObject();
+    VERIFY_OR_DEBUG_ASSERT(meta) {
+        return QMetaProperty();
+    }
+    const int id = meta->indexOfProperty(name.toLatin1().constData());
+    VERIFY_OR_DEBUG_ASSERT(id >= 0) {
+        return QMetaProperty();
+    }
+    return meta->property(id);
+}
+
+} // namespace
 
 ControlWidgetConnection::ControlWidgetConnection(
         WBaseWidget* pBaseWidget,
         const ConfigKey& key,
-        ValueTransformer* pTransformer)
-        : m_pWidget(pBaseWidget),
-          m_pValueTransformer(pTransformer) {
-    m_pControl = new ControlProxy(key, this);
-    m_pControl->connectValueChanged(SLOT(slotControlValueChanged(double)));
+        std::unique_ptr<ValueTransformer> pTransformer)
+        : QObject(),
+          m_pWidget(pBaseWidget),
+          m_pControl(make_parented<ControlProxy>(key, this, ControlFlag::NoAssertIfMissing)),
+          m_pValueTransformer(std::move(pTransformer)) {
+    m_pControl->connectValueChanged(this, &ControlWidgetConnection::slotControlValueChanged);
 }
+
+ControlWidgetConnection::~ControlWidgetConnection() = default;
 
 void ControlWidgetConnection::setControlParameter(double parameter) {
     if (m_pValueTransformer != nullptr) {
@@ -40,13 +69,17 @@ double ControlWidgetConnection::getControlParameterForValue(double value) const 
 }
 
 ControlParameterWidgetConnection::ControlParameterWidgetConnection(
-        WBaseWidget* pBaseWidget, const ConfigKey& key,
-        ValueTransformer* pTransformer, DirectionOption directionOption,
+        WBaseWidget* pBaseWidget,
+        const ConfigKey& key,
+        std::unique_ptr<ValueTransformer> pTransformer,
+        DirectionOption directionOption,
         EmitOption emitOption)
-        : ControlWidgetConnection(pBaseWidget, key, pTransformer),
+        : ControlWidgetConnection(pBaseWidget, key, std::move(pTransformer)),
           m_directionOption(directionOption),
           m_emitOption(emitOption) {
 }
+
+ControlParameterWidgetConnection::~ControlParameterWidgetConnection() = default;
 
 void ControlParameterWidgetConnection::Init() {
     slotControlValueChanged(m_pControl->get());
@@ -64,7 +97,7 @@ QString ControlParameterWidgetConnection::toDebugString() const {
 
 void ControlParameterWidgetConnection::slotControlValueChanged(double value) {
     if (m_directionOption & DIR_TO_WIDGET) {
-        double parameter = getControlParameterForValue(value);
+        const double parameter = getControlParameterForValue(value);
         m_pWidget->onConnectedControlChanged(parameter, value);
     }
 }
@@ -94,35 +127,70 @@ void ControlParameterWidgetConnection::setControlParameterUp(double v) {
 }
 
 ControlWidgetPropertyConnection::ControlWidgetPropertyConnection(
-        WBaseWidget* pBaseWidget, const ConfigKey& key,
-        ValueTransformer* pTransformer, const QString& propertyName)
-        : ControlWidgetConnection(pBaseWidget, key, pTransformer),
-          m_propertyName(propertyName.toAscii()) {
+        WBaseWidget* pBaseWidget,
+        const ConfigKey& key,
+        std::unique_ptr<ValueTransformer> pTransformer,
+        const QString& propertyName)
+        : ControlWidgetConnection(pBaseWidget, key, std::move(pTransformer)),
+          m_propertyName(propertyName),
+          m_property(propertyFromWidget(pBaseWidget->toQWidget(), propertyName)) {
+    // Initial update to synchronize the property in all the sub widgets
     slotControlValueChanged(m_pControl->get());
 }
 
+ControlWidgetPropertyConnection::~ControlWidgetPropertyConnection() = default;
+
 QString ControlWidgetPropertyConnection::toDebugString() const {
     const ConfigKey& key = getKey();
-    return QString("%1,%2 Parameter: %3 Property: %4 Value: %5").arg(
-            key.group,
-            key.item,
-            QString::number(m_pControl->getParameter()),
-            m_propertyName,
-            m_pWidget->toQWidget()->property(m_propertyName.constData()).toString());
+    return QString("%1,%2 Parameter: %3 Property: %4 Value: %5")
+            .arg(key.group,
+                    key.item,
+                    QString::number(m_pControl->getParameter()),
+                    m_propertyName,
+                    m_property.read(m_pWidget->toQWidget()).toString());
 }
 
 void ControlWidgetPropertyConnection::slotControlValueChanged(double v) {
-    QVariant parameter;
-    QWidget* pWidget = m_pWidget->toQWidget();
-    QVariant property = pWidget->property(m_propertyName.constData());
-    if (property.type() == QVariant::Bool) {
-        parameter = getControlParameterForValue(v) > 0;
+    const double parameter = getControlParameterForValue(v);
+    QVariant vParameter;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (m_property.metaType().id() == QMetaType::Bool) {
+#else
+    if (m_property.type() == QVariant::Bool) {
+#endif
+        vParameter = (parameter > 0);
     } else {
-        parameter = getControlParameterForValue(v);
+        vParameter = parameter;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    bool success = vParameter.convert(m_property.metaType());
+#else
+    bool success = vParameter.convert(m_property.type());
+#endif
+    VERIFY_OR_DEBUG_ASSERT(success) {
+        return;
+    }
+    if (m_propertyValue == vParameter) {
+        // don't repeat writing the same value that may stall the GUI
+        // Comparing the property value directly does not work, because
+        // in some cases (e.g. visible) it has to be propagated to the child widgets.
+        return;
     }
 
-    if (!pWidget->setProperty(m_propertyName.constData(),parameter)) {
-        qDebug() << "Setting property" << m_propertyName
-                << "to widget failed. Value:" << parameter;
+    QWidget* pWidget = m_pWidget->toQWidget();
+    if (!m_property.write(pWidget, vParameter)) {
+        const ConfigKey& key = getKey();
+        qWarning() << "Property" << m_propertyName
+                   << "was not defined for widget" << pWidget
+                   << "(parameter:" << parameter << ")"
+                   << key.group << key.item;
+        return;
     }
+
+    m_propertyValue = vParameter;
+
+    pWidget->style()->polish(pWidget);
+
+    // These calls don't always trigger the repaint, so call it explicitly.
+    pWidget->repaint();
 }

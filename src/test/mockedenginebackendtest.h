@@ -1,28 +1,26 @@
-#ifndef MOCKENGINEBACKENDTEST_H_
-#define MOCKENGINEBACKENDTEST_H_
+#pragma once
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include <QtDebug>
+#include <memory>
 
-#include "preferences/usersettings.h"
 #include "control/controlobject.h"
-#include "mixer/deck.h"
 #include "effects/effectsmanager.h"
+#include "engine/bufferscalers/enginebufferscale.h"
+#include "engine/channels/enginechannel.h"
+#include "engine/channels/enginedeck.h"
+#include "engine/controls/ratecontrol.h"
 #include "engine/enginebuffer.h"
-#include "engine/enginebufferscale.h"
-#include "engine/enginechannel.h"
-#include "engine/enginedeck.h"
-#include "engine/enginemaster.h"
-#include "engine/ratecontrol.h"
+#include "engine/enginemixer.h"
 #include "engine/sync/enginesync.h"
 #include "mixer/deck.h"
 #include "mixer/previewdeck.h"
 #include "mixer/sampler.h"
+#include "preferences/usersettings.h"
 #include "test/signalpathtest.h"
 #include "util/defs.h"
-#include "util/memory.h"
 #include "util/sample.h"
 #include "util/types.h"
 #include "waveform/guitick.h"
@@ -37,14 +35,14 @@ class MockScaler : public EngineBufferScale {
               m_processedTempo(-1),
               m_processedPitch(-1) {
     }
-    void clear() { }
+    void clear() override { }
     double scaleBuffer(CSAMPLE* pOutput, SINT buf_size) override {
         Q_UNUSED(pOutput);
         m_processedTempo = m_dTempoRatio;
         m_processedPitch = m_dPitchRatio;
         DEBUG_ASSERT((buf_size % 2) == 0); // 2 channels
         SINT numFrames = buf_size / 2;
-        double framesRead = round(numFrames * m_dTempoRatio);
+        double framesRead = numFrames * m_dTempoRatio;
         return framesRead;
     }
 
@@ -57,6 +55,9 @@ class MockScaler : public EngineBufferScale {
     }
 
   private:
+    void onSignalChanged() override {
+    }
+
     double m_processedTempo;
     double m_processedPitch;
 };
@@ -94,5 +95,3 @@ class MockedEngineBackendTest : public BaseSignalPathTest {
     MockScaler *m_pMockScaleKeylock1, *m_pMockScaleKeylock2, *m_pMockScaleKeylock3;
     TrackPointer m_pTrack1, m_pTrack2, m_pTrack3;
 };
-
-#endif /* MOCKEDENGINEBACKENDTEST_H_ */

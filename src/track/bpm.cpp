@@ -45,14 +45,34 @@ QString Bpm::valueToString(double value) {
     }
 }
 
-void Bpm::normalizeValue() {
-    if (isValidValue(m_value)) {
-        const double normalizedValue = valueFromString(valueToString(m_value));
+double Bpm::normalizeValue(double value) {
+    if (isValidValue(value)) {
+        const double normalizedValue = valueFromString(valueToString(value));
         // NOTE(uklotzde): Subsequently formatting and parsing the
         // normalized value should not alter it anymore!
         DEBUG_ASSERT(normalizedValue == valueFromString(valueToString(normalizedValue)));
-        m_value = normalizedValue;
+        return normalizedValue;
+    } else {
+        return value;
     }
 }
 
-} //namespace mixxx
+//static
+QString Bpm::displayValueText(double value) {
+    if (!isValidValue(value)) {
+        return QString();
+    }
+    return QString("%1").arg(value, 3, 'f', 1);
+}
+
+QDebug operator<<(QDebug dbg, Bpm arg) {
+    if (arg.isValid()) {
+        QDebugStateSaver saver(dbg);
+        dbg.nospace() << "Bpm(" << arg.value() << ")";
+    } else {
+        dbg << "Bpm(Invalid)";
+    }
+    return dbg;
+}
+
+} // namespace mixxx

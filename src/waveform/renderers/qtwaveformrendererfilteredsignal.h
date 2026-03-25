@@ -1,5 +1,4 @@
-#ifndef QTWAVEFROMRENDERERFILTEREDSIGNAL_H
-#define QTWAVEFROMRENDERERFILTEREDSIGNAL_H
+#pragma once
 
 #include "waveformrenderersignalbase.h"
 
@@ -10,7 +9,9 @@ class ControlObject;
 
 class QtWaveformRendererFilteredSignal : public WaveformRendererSignalBase {
   public:
-    explicit QtWaveformRendererFilteredSignal(WaveformWidgetRenderer* waveformWidgetRenderer);
+    explicit QtWaveformRendererFilteredSignal(
+            WaveformWidgetRenderer* waveformWidgetRenderer,
+            ::WaveformRendererSignalBase::Options options);
     virtual ~QtWaveformRendererFilteredSignal();
 
     virtual void onSetup(const QDomNode &node);
@@ -30,5 +31,3 @@ class QtWaveformRendererFilteredSignal : public WaveformRendererSignalBase {
 
     QVector<QPointF> m_polygon[3];
 };
-
-#endif // QTWAVEFROMRENDERERFILTEREDSIGNAL_H

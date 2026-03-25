@@ -1,9 +1,8 @@
-#ifndef WAVEFORMRENDERPREROLL_H
-#define WAVEFORMRENDERPREROLL_H
+#pragma once
 
 #include <QColor>
 
-#include "skin/skincontext.h"
+#include "skin/legacy/skincontext.h"
 #include "util/class.h"
 #include "waveform/renderers/waveformrendererabstract.h"
 
@@ -17,8 +16,6 @@ class WaveformRendererPreroll : public WaveformRendererAbstract {
 
   private:
     QColor m_color;
-
+    
     DISALLOW_COPY_AND_ASSIGN(WaveformRendererPreroll);
 };
-
-#endif /* WAVEFORMRENDERPREROLL_H */

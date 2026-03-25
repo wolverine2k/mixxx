@@ -2,9 +2,10 @@
 
 #include <QtDebug>
 
+#include "test/signalpathtest.h"
 #include "preferences/usersettings.h"
 #include "control/controlobject.h"
-#include "engine/enginemicrophone.h"
+#include "engine/channels/enginemicrophone.h"
 #include "soundio/soundmanagerutil.h"
 #include "util/defs.h"
 #include "util/sample.h"
@@ -12,18 +13,18 @@
 
 namespace {
 
-class EngineMicrophoneTest : public testing::Test {
+class EngineMicrophoneTest : public SignalPathTest {
   protected:
     void SetUp() override {
-        inputLength = MAX_BUFFER_LEN;
-        outputLength = MAX_BUFFER_LEN;
+        inputLength = kMaxEngineSamples;
+        outputLength = kMaxEngineSamples;
         input = SampleUtil::alloc(inputLength);
         output = SampleUtil::alloc(outputLength);
         test = SampleUtil::alloc(outputLength);
 
         // No need for a real handle in this test.
         m_pMicrophone = new EngineMicrophone(
-                ChannelHandleAndGroup(ChannelHandle(), "[Microphone]"), NULL);
+                ChannelHandleAndGroup(ChannelHandle(), "[Microphone]"), m_pEffectsManager);
         m_pTalkover = ControlObject::getControl(ConfigKey("[Microphone]", "talkover"));
     }
 
@@ -83,7 +84,10 @@ TEST_F(EngineMicrophoneTest, TestInputMatchesOutput) {
     FillBuffer(input, 0.1f, inputLength);
     ClearBuffer(output, outputLength);
 
-    AudioInput micInput = AudioInput(AudioPath::MICROPHONE, 0, 1, 0);
+    AudioInput micInput = AudioInput(AudioPathType::Microphone,
+            0,
+            mixxx::audio::ChannelCount::mono(),
+            0);
     m_pTalkover->set(1.0);
 
     m_pMicrophone->receiveBuffer(micInput, input, inputLength);
@@ -95,7 +99,10 @@ TEST_F(EngineMicrophoneTest, TestInputMatchesOutput) {
 
 TEST_F(EngineMicrophoneTest, TestRepeatedInputMatchesOutput) {
     ClearBuffer(output, outputLength);
-    AudioInput micInput = AudioInput(AudioPath::MICROPHONE, 0, 1, 0);
+    AudioInput micInput = AudioInput(AudioPathType::Microphone,
+            0,
+            mixxx::audio::ChannelCount::mono(),
+            0);
     m_pTalkover->set(1.0);
 
     for (int i = 0; i < 10; i++) {

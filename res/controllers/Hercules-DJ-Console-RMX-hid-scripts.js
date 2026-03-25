@@ -147,7 +147,7 @@ RMX.init = function() {
     engine.setValue(g,"keylock",!engine.getValue(g, "keylock"));
   });
 
-  c.capture("pitch_reset", "press", function(g, e, v) {
+  c.capture("pitch_set_default", "press", function(g, e, v) {
     engine.setValue(g,"rate",0);
   });
 
@@ -163,12 +163,25 @@ RMX.init = function() {
 
   var print_unhandled_button = function(g,e,v) { print("Unhandled button");};
 
-  c.capture("keypad1","all", print_unhandled_button );
-  c.capture("keypad2","all", print_unhandled_button );
-  c.capture("keypad3","all", print_unhandled_button );
-  c.capture("keypad4","all", print_unhandled_button );
-  c.capture("keypad5","all", print_unhandled_button );
-  c.capture("keypad6","all", print_unhandled_button );
+  c.capture("keypad1","all", function(g, e, v) {
+    engine.setValue(g,"hotcue_1_activate",v)
+  } );
+  c.capture("keypad2","all", function(g, e, v) {
+    engine.setValue(g,"hotcue_2_activate",v)
+  } );
+  c.capture("keypad3","all", function(g, e, v) {
+    engine.setValue(g,"hotcue_3_activate",v)
+  } );
+  c.capture("keypad4","all", function(g, e, v) {
+    engine.setValue(g,"hotcue_4_activate",v)
+  } );
+
+  c.capture("keypad5","all", function(g, e, v) {
+    engine.setValue(g,"loop_in",v)
+  } );
+  c.capture("keypad6","all", function(g, e, v) {
+    engine.setValue(g,"loop_out",v)
+  } );
 
   var filterKill = function(g, e, v) {
     engine.setValue(g, e, !engine.getValue(g, e));
@@ -215,8 +228,7 @@ RMX.scroll_tracks = function(g, e, v) {
     engine.setValue("[Playlist]", direction, 1);
 
     if (!RMX.scroll_timer) {
-      var callback = 'RMX.scroll_tracks("[Playlist]","' + e + '",' + v + ')';
-      RMX.scroll_timer = engine.beginTimer(150, callback);
+      RMX.scroll_timer = engine.beginTimer(150, () => RMX.scroll_tracks("Playlist", e, v), true);
     }
   }
   else {
@@ -270,8 +282,7 @@ RMX.jog = function(g, e, v, ctrl) {
     }
     engine.scratchTick(deck, ctrl.relative);
 
-    var callback = 'RMX.stopScratching(\"' + g + '\")';
-    RMX.scratchTimer = engine.beginTimer(20, callback, true);
+    RMX.scratchTimer = engine.beginTimer(20, () => RMX.stopScratching(g), true);
   }
 
   // fine jog mode when playing
@@ -325,7 +336,7 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "filterHighKill",    "[Channel1]", "button", 2, 0x20);
   c.add_control(pid, "filterMidKill",     "[Channel1]", "button", 2, 0x40);
   c.add_control(pid, "filterLowKill",     "[Channel1]", "button", 2, 0x80);
-  c.add_control(pid, "pitch_reset",       "[Channel1]", "button", 3, 0x01);
+  c.add_control(pid, "pitch_set_default", "[Channel1]", "button", 3, 0x01);
   c.add_control(pid, "LoadSelectedTrack", "[Channel1]", "button", 3, 0x02);
   c.add_control(pid, "source",            "[Channel1]", "button", 3, 0x04);
   c.add_control(pid, "headphone_cue",     "[Channel1]", "button", 3, 0x08);
@@ -342,7 +353,7 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "keypad5",           "[Channel2]", "button", 4, 0x10);
   c.add_control(pid, "keypad6",           "[Channel2]", "button", 4, 0x20);
   c.add_control(pid, "beatsync",          "[Channel2]", "button", 4, 0x40);
-  c.add_control(pid, "pitch_reset",       "[Channel2]", "button", 4, 0x80);
+  c.add_control(pid, "pitch_set_default", "[Channel2]", "button", 4, 0x80);
   c.add_control(pid, "previous",          "[Channel2]", "button", 5, 0x01);
   c.add_control(pid, "next",              "[Channel2]", "button", 5, 0x02);
   c.add_control(pid, "play",              "[Channel2]", "button", 5, 0x04);
@@ -397,7 +408,7 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "source",        "[Channel1]", "led", 1, 0x10);
   c.add_control(pid, "beatsync",      "[Channel1]", "led", 1, 0x20);
   c.add_control(pid, "beatlock",      "[Channel1]", "led", 1, 0x40);
-  c.add_control(pid, "pitch_reset",   "[Channel1]", "led", 1, 0x80);
+  c.add_control(pid, "pitch_set_default", "[Channel1]", "led", 1, 0x80);
 
   c.add_control(pid, "play",          "[Channel2]", "led", 2, 0x02); // blinking: 2, 0x02
   c.add_control(pid, "cue_default",   "[Channel2]", "led", 2, 0x04); // blinking: 2, 0x04
@@ -405,7 +416,7 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "source",        "[Channel2]", "led", 2, 0x10);
   c.add_control(pid, "beatsync",      "[Channel2]", "led", 2, 0x20); // blinking: 2, 0x20
   c.add_control(pid, "beatlock",      "[Channel2]", "led", 2, 0x80); // blinking: 2, 0x80
-  c.add_control(pid, "pitch_reset",   "[Channel2]", "led", 2, 0x40); // blinking: 2, 0x40
+  c.add_control(pid, "pitch_set_default", "[Channel2]", "led", 2, 0x40); // blinking: 2, 0x40
 
 };
 

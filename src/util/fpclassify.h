@@ -1,38 +1,44 @@
-#ifndef UTIL_FPCLASSIFY_H
-#define UTIL_FPCLASSIFY_H
+#pragma once
 
-#ifdef _MSC_VER
+/**
+ * Functions for testing special floating-point values that
+ * won't work with -ffast-math. This corresponding.cpp file
+ * is compiled without -ffast-math and allows to invoke these
+ * functions from -ffast-math code.
+ *
+ * NOTE: All usage of the corresponding std functions must be
+ * avoided because they don't work as expected!!!
+ */
 
-// VC++ uses _isnan() instead of isnan() and !_finite instead of isinf.
-#include <float.h>
-#define isnan(x) _isnan(x)
-#define isinf(x) (!_finite(x))
+bool util_isfinite(double x);
+// Delete all other overloads to avoid accidental usage of them.
+template<typename T>
+bool util_isfinite(T x) = delete;
 
-#else
+bool util_isnormal(double x);
+// Delete all other overloads to avoid accidental usage of them.
+template<typename T>
+bool util_isnormal(T x) = delete;
 
-// We define 
-// these as macros to prevent clashing with c++11 built-ins in the global
-// namespace. If you say "using std::isnan;" then this will fail to build with
-// std=c++11. See https://bugs.webkit.org/show_bug.cgi?id=59249 for some
-// relevant discussion.
-
-#define isnan util_isnan
-#define isinf util_isinf
-#define isnormal util_isnormal
-#define fpclassify util_fpclassify
-#define isfinite util_isfinite
-
-int util_fpclassify(float x);
-int util_isfinite(float x);
-int util_isnormal(float x);
 int util_isnan(float x);
-int util_isinf(float x);
-int util_fpclassify(double x);
-int util_isfinite(double x);
-int util_isnormal(double x);
 int util_isnan(double x);
+// Delete all other overloads to avoid accidental usage of them.
+template<typename T>
+bool util_isnan(T x) = delete;
+
+int util_isinf(float x);
 int util_isinf(double x);
+// Delete all other overloads to avoid accidental usage of them.
+template<typename T>
+bool util_isinf(T x) = delete;
 
-#endif
+// The following functions are only used in testing code.
+// Don't use them in other -ffast-math code to avoid undefined behavior in
+// floating-point arithmetic where the compiler assumes that arguments and
+// results are not NaNs or +-Infs. For checking external librarie's return
+// values use the appropiated function above.
+float util_float_infinity();
+double util_double_infinity();
 
-#endif // UTIL_FPCLASSIFY_H
+float util_float_nan();
+double util_double_nan();

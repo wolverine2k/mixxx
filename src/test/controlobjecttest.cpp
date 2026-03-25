@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
+
 #include <QtDebug>
+#include <memory>
 
 #include "control/controlobject.h"
-#include "util/memory.h"
 #include "test/mixxxtest.h"
 
 namespace {
@@ -32,7 +33,8 @@ TEST_F(ControlObjectTest, getControl) {
     EXPECT_EQ(ControlObject::getControl(ck1), co1.get());
     EXPECT_EQ(ControlObject::getControl(ck2), co2.get());
     co2.reset();
-    EXPECT_EQ(ControlObject::getControl(ck2), (ControlObject*)nullptr);
+    EXPECT_EQ(ControlObject::getControl(ck2, ControlFlag::NoAssertIfMissing),
+            (ControlObject*)nullptr);
 }
 
 TEST_F(ControlObjectTest, AliasRetrieval) {
@@ -43,7 +45,7 @@ TEST_F(ControlObjectTest, AliasRetrieval) {
     auto co = std::make_unique<ControlObject>(ck);
 
     // Insert the alias before it is going to be used
-    ControlDoublePrivate::insertAlias(ckAlias, ck);
+    co->addAlias(ckAlias);
 
     // Check if getControl on alias returns us the original ControlObject
     EXPECT_EQ(ControlObject::getControl(ckAlias), co.get());
@@ -84,4 +86,4 @@ TEST_F(ControlObjectTest, Persistence_ValidValue) {
     EXPECT_DOUBLE_EQ(5.0, co.get());
 }
 
-}
+} // namespace

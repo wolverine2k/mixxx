@@ -1,11 +1,11 @@
-#ifndef MIXXX_UTIL_DURATION_H
-#define MIXXX_UTIL_DURATION_H
+#pragma once
 
 #include <QMetaType>
 #include <QString>
+#include <QTextStreamFunction>
 #include <QtDebug>
 #include <QtGlobal>
-#include <QTextStreamFunction>
+#include <chrono>
 
 #include "util/assert.h"
 
@@ -14,8 +14,8 @@ namespace mixxx {
 class DurationBase {
 
   public:
+
     enum Units {
-        HEX,
         SECONDS,
         MILLIS,
         MICROS,
@@ -23,43 +23,43 @@ class DurationBase {
     };
 
     // Returns the duration as an integer number of seconds (rounded-down).
-    inline qint64 toIntegerSeconds() const {
+    constexpr qint64 toIntegerSeconds() const {
         return m_durationNanos / kNanosPerSecond;
     }
 
     // Returns the duration as a floating point number of seconds.
-    inline double toDoubleSeconds() const {
+    constexpr double toDoubleSeconds() const {
         return static_cast<double>(m_durationNanos) / kNanosPerSecond;
     }
 
     // Returns the duration as an integer number of milliseconds (rounded-down).
-    inline qint64 toIntegerMillis() const {
+    constexpr qint64 toIntegerMillis() const {
         return m_durationNanos / kNanosPerMilli;
     }
 
     // Returns the duration as a floating point number of milliseconds.
-    inline qint64 toDoubleMillis() const {
+    constexpr double toDoubleMillis() const {
         return static_cast<double>(m_durationNanos) / kNanosPerMilli;
     }
 
     // Returns the duration as an integer number of microseconds (rounded-down).
-    inline qint64 toIntegerMicros() const {
+    constexpr qint64 toIntegerMicros() const {
         return m_durationNanos / kNanosPerMicro;
     }
 
     // Returns the duration as a floating point number of microseconds.
-    inline qint64 toDoubleMicros() const {
+    constexpr double toDoubleMicros() const {
         return static_cast<double>(m_durationNanos) / kNanosPerMicro;
     }
 
     // Returns the duration as an integer number of nanoseconds. The duration is
     // represented internally as nanoseconds so no rounding occurs.
-    inline qint64 toIntegerNanos() const {
+    constexpr qint64 toIntegerNanos() const {
         return m_durationNanos;
     }
 
     // Returns the duration as an integer number of nanoseconds.
-    inline qint64 toDoubleNanos() const {
+    constexpr double toDoubleNanos() const {
         return static_cast<double>(m_durationNanos);
     }
 
@@ -71,18 +71,32 @@ class DurationBase {
 
     // The standard way of formatting a floating-point duration in seconds.
     // Used for display of track duration, etc.
+    static QString formatTime(
+            double dSeconds,
+            Precision precision = Precision::SECONDS);
+    // Alternative format for duration based on seconds
     static QString formatSeconds(
             double dSeconds,
             Precision precision = Precision::SECONDS);
+    static QString formatSecondsLong(
+            double dSeconds,
+            Precision precision = Precision::SECONDS);
+    static QString formatKiloSeconds(
+            double dSeconds,
+            Precision precision = Precision::SECONDS);
 
-    static const qint64 kMillisPerSecond = 1000;
-    static const qint64 kMicrosPerSecond = kMillisPerSecond * 1000;
-    static const qint64 kNanosPerSecond  = kMicrosPerSecond * 1000;
-    static const qint64 kNanosPerMilli   = kNanosPerSecond / 1000;
-    static const qint64 kNanosPerMicro   = kNanosPerMilli / 1000;
+    static constexpr qint64 kMillisPerSecond = 1000;
+    static constexpr qint64 kMicrosPerSecond = kMillisPerSecond * 1000;
+    static constexpr qint64 kNanosPerSecond  = kMicrosPerSecond * 1000;
+    static constexpr qint64 kNanosPerMilli   = kNanosPerSecond / 1000;
+    static constexpr qint64 kNanosPerMicro   = kNanosPerMilli / 1000;
+    static const QString kInvalidDurationString;
+    static QChar kKiloGroupSeparator;
+    static QChar kHectoGroupSeparator;
+    static QChar kDecimalSeparator;
 
   protected:
-    DurationBase(qint64 durationNanos)
+    explicit constexpr DurationBase(qint64 durationNanos)
         : m_durationNanos(durationNanos) {
     }
 
@@ -91,20 +105,13 @@ class DurationBase {
 
 class DurationDebug : public DurationBase {
   public:
-    DurationDebug(const DurationBase& duration, Units unit)
+    constexpr DurationDebug(const DurationBase& duration, Units unit)
         : DurationBase(duration),
           m_unit(unit) {
     }
 
     friend QDebug operator<<(QDebug debug, const DurationDebug& dd) {
         switch (dd.m_unit) {
-        case HEX:
-        {
-            QByteArray ret("0x0000000000000000");
-            QByteArray hex = QByteArray::number(dd.m_durationNanos, 16);
-            ret.replace(18 - hex.size(), hex.size(), hex);
-            return debug << ret;
-        }
         case SECONDS:
             return debug << dd.toIntegerSeconds() << "s";
         case MILLIS:
@@ -125,29 +132,43 @@ class DurationDebug : public DurationBase {
 
 // Represents a duration in a type-safe manner. Provides conversion methods to
 // convert between physical units. Durations can be negative.
+/// Deprecated: use `std::chrono::duration` in new code instead
 class Duration : public DurationBase {
   public:
     // Returns a Duration object representing a duration of 'seconds'.
-    static Duration fromSeconds(qint64 seconds) {
-        return Duration(seconds * kNanosPerSecond);
+    template<typename T>
+    static constexpr Duration fromSeconds(T seconds) {
+        return Duration(static_cast<qint64>(seconds * kNanosPerSecond));
     }
 
     // Returns a Duration object representing a duration of 'millis'.
-    static Duration fromMillis(qint64 millis) {
+    static constexpr Duration fromMillis(qint64 millis) {
         return Duration(millis * kNanosPerMilli);
     }
 
     // Returns a Duration object representing a duration of 'micros'.
-    static Duration fromMicros(qint64 micros) {
+    static constexpr Duration fromMicros(qint64 micros) {
         return Duration(micros * kNanosPerMicro);
     }
 
     // Returns a Duration object representing a duration of 'nanos'.
-    static Duration fromNanos(qint64 nanos) {
+    static constexpr Duration fromNanos(qint64 nanos) {
         return Duration(nanos);
     }
 
-    Duration()
+    static constexpr Duration fromStdDuration(std::chrono::nanoseconds duration) {
+        return Duration::fromNanos(duration.count());
+    }
+
+    constexpr std::chrono::nanoseconds toStdDuration() {
+        return std::chrono::nanoseconds(m_durationNanos);
+    }
+
+    static constexpr Duration empty() {
+        return Duration();
+    }
+
+    constexpr Duration()
         : DurationBase(0) {
     }
 
@@ -216,17 +237,6 @@ class Duration : public DurationBase {
         return debug << duration.m_durationNanos << "ns";
     }
 
-    // Formats the duration as a two's-complement hexadecimal string.
-    QString formatHex() const {
-        // Format as fixed-width (8 digits).
-        return QString("0x%1").arg(m_durationNanos, 16, 16, QLatin1Char('0'));
-    }
-
-    // Formats the duration as a two's-complement hexadecimal string.
-    inline DurationDebug debugHex() const {
-        return debug(HEX);
-    }
-
     QString formatNanosWithUnit() const {
         return QString("%1 ns").arg(toIntegerNanos());
     }
@@ -264,7 +274,7 @@ class Duration : public DurationBase {
     }
 
   private:
-    Duration(qint64 durationNanos)
+    explicit constexpr Duration(qint64 durationNanos)
             : DurationBase(durationNanos) {
     }
 };
@@ -273,5 +283,3 @@ class Duration : public DurationBase {
 
 Q_DECLARE_TYPEINFO(mixxx::Duration, Q_MOVABLE_TYPE);
 Q_DECLARE_METATYPE(mixxx::Duration)
-
-#endif /* MIXXX_UTIL_DURATION_H */

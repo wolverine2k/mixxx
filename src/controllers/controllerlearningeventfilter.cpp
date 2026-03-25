@@ -1,12 +1,15 @@
-#include <QtDebug>
-#include <QMouseEvent>
-#include <QKeyEvent>
+#include "controllers/controllerlearningeventfilter.h"
 
-#include "widget/wwidget.h"
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QtDebug>
+
+#include "control/pollingcontrolproxy.h"
+#include "moc_controllerlearningeventfilter.cpp"
 #include "widget/wknob.h"
 #include "widget/wknobcomposed.h"
 #include "widget/wslidercomposed.h"
-#include "controllers/controllerlearningeventfilter.h"
+#include "widget/wwidget.h"
 
 ControllerLearningEventFilter::ControllerLearningEventFilter(QObject* pParent)
         : QObject(pParent),
@@ -17,16 +20,16 @@ ControllerLearningEventFilter::~ControllerLearningEventFilter() {
 }
 
 bool ControllerLearningEventFilter::eventFilter(QObject* pObject, QEvent* pEvent) {
-    //qDebug() << "ControllerLearningEventFilter::eventFilter" << pObject << pEvent;
+    // qDebug() << "ControllerLearningEventFilter::eventFilter" << pObject << pEvent;
 
-    WWidget* pWidget = dynamic_cast<WWidget*>(pObject);
+    WWidget* pWidget = qobject_cast<WWidget*>(pObject);
     if (!pWidget || !m_bListening) {
         return false;
     }
 
-    WKnob* pKnob = dynamic_cast<WKnob*>(pObject);
-    WKnobComposed* pKnobComposed = dynamic_cast<WKnobComposed*>(pObject);
-    WSliderComposed* pSlider = dynamic_cast<WSliderComposed*>(pObject);
+    WKnob* pKnob = qobject_cast<WKnob*>(pObject);
+    WKnobComposed* pKnobComposed = qobject_cast<WKnobComposed*>(pObject);
+    WSliderComposed* pSlider = qobject_cast<WSliderComposed*>(pObject);
     bool has_right_click_reset = pKnob || pKnobComposed || pSlider;
 
     if (pEvent->type() == QEvent::KeyPress) {
@@ -40,10 +43,10 @@ bool ControllerLearningEventFilter::eventFilter(QObject* pObject, QEvent* pEvent
             if (info.leftClickControl) {
                 ConfigKey key = info.leftClickControl->getKey();
                 qDebug() << "Left-click maps MIDI to:" << key.group << key.item;
-                emit(controlClicked(info.leftClickControl));
+                emit controlClicked(key);
             } else if (info.clickControl) {
                 ConfigKey key = info.clickControl->getKey();
-                emit(controlClicked(info.clickControl));
+                emit controlClicked(key);
                 qDebug() << "Default-click maps MIDI to:" << key.group << key.item;
             } else {
                 qDebug() << "No control bound to left-click for" << pWidget;
@@ -53,7 +56,7 @@ bool ControllerLearningEventFilter::eventFilter(QObject* pObject, QEvent* pEvent
             if (info.rightClickControl) {
                 ConfigKey key = info.rightClickControl->getKey();
                 qDebug() << "Right-click maps MIDI to:" << key.group << key.item;
-                emit(controlClicked(info.rightClickControl));
+                emit controlClicked(key);
             } else if (has_right_click_reset && (info.leftClickControl || info.clickControl)) {
                 // WKnob and WSliderComposed emits a reset signal on
                 // right-click. For controls that are derived from
@@ -65,15 +68,14 @@ bool ControllerLearningEventFilter::eventFilter(QObject* pObject, QEvent* pEvent
                 }
                 ConfigKey key = pControl->getKey();
                 key.item = key.item + "_set_default";
-                ControlObject* pResetControl = ControlObject::getControl(key);
-                if (pResetControl) {
+                if (ControlObject::exists(key)) {
                     qDebug() << "Right-click reset maps MIDI to:" << key.group << key.item;
-                    emit(controlClicked(pResetControl));
+                    emit controlClicked(key);
                 }
             } else if (info.clickControl) {
                 ConfigKey key = info.clickControl->getKey();
                 qDebug() << "Default-click maps MIDI to:" << key.group << key.item;
-                emit(controlClicked(info.clickControl));
+                emit controlClicked(key);
             } else {
                 qDebug() << "No control bound to right-click for" << pWidget;
             }
@@ -86,8 +88,8 @@ bool ControllerLearningEventFilter::eventFilter(QObject* pObject, QEvent* pEvent
     return false;
 }
 
-void ControllerLearningEventFilter::addWidgetClickInfo(
-        QWidget* pWidget, Qt::MouseButton buttonState,
+void ControllerLearningEventFilter::addWidgetClickInfo(QWidget* pWidget,
+        Qt::MouseButton buttonState,
         ControlObject* pControl,
         ControlParameterWidgetConnection::EmitOption emitOption) {
     ControlInfo& info = m_widgetControlInfo[pWidget];

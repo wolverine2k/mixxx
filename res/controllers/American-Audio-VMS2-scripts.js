@@ -61,7 +61,7 @@ VMS2.init = function (id) {    // called when the MIDI device is opened & set up
 
     // Enable soft-takeover for all direct hardware controls
     //  (Many of these are mapped in the XML directly so these have no effect.
-    //  Here for completeness incase any eventually move to script.)
+    //  Here for completeness in case any eventually move to script.)
     //    engine.softTakeover("[Channel1]","rate",true);
     //    engine.softTakeover("[Channel1]","volume",true);
     //    engine.softTakeover("[Channel1]","pregain",true);
@@ -323,7 +323,7 @@ VMS2.playlight = function(value, group, control) {
         deck.Buttons.Pause.setLed(LedState.on);
         // start a fancy blink timer
         deck.switchPlaylightOff = true;
-        deck.playTimer = engine.beginTimer(500,"VMS2.playlightflash(\""+group+"\")");
+        deck.playTimer = engine.beginTimer(500,()=>VMS2.playlightflash(group));
     }
 };
 

@@ -337,10 +337,11 @@ function ZoomKey(dir) {
     that.onPushOrig = that.onPush;
     that.onPush = function()
     {
-        if ( ZoomKey.zoom < 6 && this.dir == "+" ) {
+        // range is 1..10
+        if (ZoomKey.zoom < 10 && this.dir === "+") {
             ZoomKey.zoom++;
         }
-        if ( ZoomKey.zoom > 1 && this.dir == "-") {
+        if (ZoomKey.zoom > 1 && this.dir === "-") {
             ZoomKey.zoom--;
         }
 
@@ -400,12 +401,15 @@ NLM.init = function()
 {
         NLM.page = 0;
         NLM.shiftstate = false;
-        NLM.numofdecks = engine.getValue("[Master]", "num_decks");
+        NLM.numofdecks = engine.getValue("[App]", "num_decks");
+    if (engine.getValue("[App]", "num_samplers") < 16) {
+        engine.setValue("[App]", "num_samplers", 16);
+    }
         // For testing NLM.numofdecks = 4;
 
         //Init hw
         midi.sendShortMsg(0xb0, 0x0, 0x0);
-        //midi.sendShortMsg(0xb0, 0x0, 0x28); //Enable buffer cycling <-- Figure out whats wrong with this
+        //midi.sendShortMsg(0xb0, 0x0, 0x28); //Enable buffer cycling <-- Figure out what's wrong with this
 
         // select buffer 0
         midi.sendShortMsg(0xb0, 0x68, 3);
@@ -488,12 +492,12 @@ NLM.init = function()
         NLM.setupBtn(7,7,2, LoadKey("Channel",2));
         NLM.setupBtn(7,5,4, LoadKey("Channel",3));
         NLM.setupBtn(7,7,4, LoadKey("Channel",4));
-        
+
         NLM.setupBtn(7,0,6, LoadKey("Sampler",1));
         NLM.setupBtn(7,1,6, LoadKey("Sampler",2));
         NLM.setupBtn(7,2,6, LoadKey("Sampler",3));
         NLM.setupBtn(7,3,6, LoadKey("Sampler",4));
-        
+
         NLM.setupBtn(7,0,7, LoadKey("Sampler",5));
         NLM.setupBtn(7,1,7, LoadKey("Sampler",6));
         NLM.setupBtn(7,2,7, LoadKey("Sampler",7));
@@ -513,9 +517,9 @@ NLM.init = function()
                 NLM.setupBtn(1,i,ch*2-1, SeekKey(ch, i));
             }
         }
-        
+
         // ============== PAGE C ===============
-        
+
         // Add Sampler playbuttons
         for(var channel = 1 ; channel < 9 ; channel++) {
             NLM.setupBtn(2, 0, channel-1, PlayKey("Sampler", channel));
@@ -524,7 +528,7 @@ NLM.init = function()
                 NLM.setupBtn(2, 3+i, channel-1, HotCueKey("Sampler", channel, i));
             }
         }
-        
+
 
 
 
@@ -565,7 +569,6 @@ NLM.incomingData = function(channel, control, value, status, group)
             y = 8; x = 0;
         }
 
-        print( "COO: " + NLM.page + ":" + x + ":" + y);
         NLM.btns[NLM.page][x][y].pressed = pressed;
         NLM.btns[NLM.page][x][y].callback();
 };
@@ -577,4 +580,3 @@ NLM.drawPage = function() {
         }
     }
 }
-

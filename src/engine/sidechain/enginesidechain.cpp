@@ -1,19 +1,3 @@
-/***************************************************************************
-                          enginesidechain.cpp
-                             -------------------
-    copyright            : (C) 2008 Albert Santoni
-    email                : gamegod \a\t users.sf.net
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
 // This class provides a way to do audio processing that does not need
 // to be executed in real-time. For example, broadcast encoding
 // and recording encoding can be done here. This class uses double-buffering
@@ -25,28 +9,31 @@
 #include "engine/sidechain/enginesidechain.h"
 
 #include <QtDebug>
-#include <QMutexLocker>
 
+#include "engine/engine.h"
 #include "engine/sidechain/sidechainworker.h"
+#include "moc_enginesidechain.cpp"
 #include "util/counter.h"
 #include "util/event.h"
 #include "util/sample.h"
-#include "util/timer.h"
 #include "util/trace.h"
 
 #define SIDECHAIN_BUFFER_SIZE 65536
 
-EngineSideChain::EngineSideChain(UserSettingsPointer pConfig)
+EngineSideChain::EngineSideChain(
+        UserSettingsPointer pConfig,
+        CSAMPLE* sidechainMix)
         : m_pConfig(pConfig),
           m_bStopThread(false),
           m_sampleFifo(SIDECHAIN_BUFFER_SIZE),
-          m_pWorkBuffer(SampleUtil::alloc(SIDECHAIN_BUFFER_SIZE)) {
+          m_pWorkBuffer(SampleUtil::alloc(SIDECHAIN_BUFFER_SIZE)),
+          m_pSidechainMix(sidechainMix) {
     // We use HighPriority to prevent starvation by lower-priority processes (Qt
     // main thread, analysis, etc.). This used to be LowPriority but that is not
     // a suitable choice since we do semi-realtime tasks
     // in the sidechain thread. To get reliable timing, it's important
     // that this work be prioritized over the GUI and non-realtime tasks. See
-    // discussion on Bug #1270583 and Bug #1194543.
+    // discussion on issue #7272 and https://bugs.launchpad.net/mixxx/1.11/+bug/1194543.
     start(QThread::HighPriority);
 }
 
@@ -75,11 +62,25 @@ void EngineSideChain::addSideChainWorker(SideChainWorker* pWorker) {
     m_workers.append(pWorker);
 }
 
-void EngineSideChain::writeSamples(const CSAMPLE* newBuffer, int buffer_size) {
-    Trace sidechain("EngineSideChain::writeSamples");
-    int samples_written = m_sampleFifo.write(newBuffer, buffer_size);
+void EngineSideChain::receiveBuffer(const AudioInput& input,
+        const CSAMPLE* pBuffer,
+        unsigned int iFrames) {
+    VERIFY_OR_DEBUG_ASSERT(input.getType() == AudioPathType::RecordBroadcast) {
+        qDebug() << "WARNING: AudioInput type is not RECORD_BROADCAST. Ignoring incoming buffer.";
+        return;
+    }
+    // Just copy the received samples form the sound card input to the
+    // engine. After processing we get it back via writeSamples()
+    SampleUtil::copy(m_pSidechainMix, pBuffer, iFrames * mixxx::kEngineChannelOutputCount);
+}
 
-    if (samples_written != buffer_size) {
+void EngineSideChain::writeSamples(const CSAMPLE* pBuffer, int iFrames) {
+    Trace sidechain("EngineSideChain::writeSamples");
+    // TODO: remove assumption of stereo buffer
+    const int numSamples = iFrames * mixxx::kEngineChannelOutputCount;
+    const int numSamplesWritten = m_sampleFifo.write(pBuffer, numSamples);
+
+    if (numSamplesWritten != numSamples) {
         Counter("EngineSideChain::writeSamples buffer overrun").increment();
     }
 
@@ -95,16 +96,16 @@ void EngineSideChain::run() {
     // factor this out somehow), -kousu 2/2009
     unsigned static id = 0;
     QThread::currentThread()->setObjectName(QString("EngineSideChain %1").arg(++id));
-
-    Event::start("EngineSideChain");
+    static const QString tag("EngineSideChain");
+    Event::start(tag);
     while (!m_bStopThread) {
         // Sleep until samples are available.
         m_waitLock.lock();
 
-        Event::end("EngineSideChain");
+        Event::end(tag);
         m_waitForSamples.wait(&m_waitLock);
         m_waitLock.unlock();
-        Event::start("EngineSideChain");
+        Event::start(tag);
 
         int samples_read;
         while ((samples_read = m_sampleFifo.read(m_pWorkBuffer,

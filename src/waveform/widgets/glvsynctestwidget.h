@@ -1,22 +1,26 @@
-#ifndef GLVSYNCTESTWIDGET_H
-#define GLVSYNCTESTWIDGET_H
+#pragma once
 
-#include <QGLWidget>
+#include "waveform/widgets/glwaveformwidgetabstract.h"
 
-#include "waveformwidgetabstract.h"
-
-class GLVSyncTestWidget : public QGLWidget, public WaveformWidgetAbstract {
+class GLVSyncTestWidget : public GLWaveformWidgetAbstract {
     Q_OBJECT
   public:
-    GLVSyncTestWidget(const char* group, QWidget* parent);
+    GLVSyncTestWidget(const QString& group, QWidget* parent);
     virtual ~GLVSyncTestWidget();
 
-    virtual WaveformWidgetType::Type getType() const { return WaveformWidgetType::GLVSyncTest; }
+    virtual WaveformWidgetType::Type getType() const {
+        return WaveformWidgetType::VSyncTest;
+    }
 
-    static inline QString getWaveformWidgetName() { return tr("VSyncTest"); }
     static inline bool useOpenGl() { return true; }
+    static inline bool useOpenGles() { return false; }
     static inline bool useOpenGLShaders() { return false; }
-    static inline bool developerOnly() { return true; }
+    static inline bool useTextureForWaveform() {
+        return false;
+    }
+    static inline WaveformWidgetCategory category() {
+        return WaveformWidgetCategory::DeveloperOnly;
+    }
 
   protected:
     virtual void castToQWidget();
@@ -26,4 +30,3 @@ class GLVSyncTestWidget : public QGLWidget, public WaveformWidgetAbstract {
   private:
     friend class WaveformWidgetFactory;
 };
-#endif // GLVSYNCTESTWIDGET_H

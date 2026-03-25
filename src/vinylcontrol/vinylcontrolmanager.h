@@ -1,32 +1,14 @@
-/**
- * @file vinylcontrolmanager.h
- * @author Bill Good <bkgood@gmail.com>
- * @date April 15, 2011
- */
-
-#ifndef VINYLCONTROLMANAGER_H
-#define VINYLCONTROLMANAGER_H
+#pragma once
 
 #include <QObject>
-#include <QSignalMapper>
-#include <QString>
-#include <QTimerEvent>
 
-#include "soundio/soundmanagerutil.h"
 #include "preferences/usersettings.h"
-#include "vinylcontrol/vinylsignalquality.h"
 
 class ControlProxy;
-class ControlPushButton;
 class SoundManager;
-class VinylControl;
 class VinylControlProcessor;
-
-
-const int kMaxNumberOfDecks = 4; // set to 4 because it will ideally not be more
-// or less than the number of vinyl-controlled decks but will probably be
-// forgotten in any 2->4 deck switchover. Only real consequence is
-// sizeof(void*)*2 bytes of wasted memory if we're only using 2 decks -bkgood
+class QTimerEvent;
+class VinylSignalQualityListener;
 
 // VinylControlManager is the main-thread interface that other parts of Mixxx
 // use to interact with the vinyl control subsystem (other than controls exposed
@@ -73,7 +55,4 @@ class VinylControlManager : public QObject {
     QList<ControlProxy*> m_pVcEnabled;
     ControlProxy* m_pNumDecks;
     int m_iNumConfiguredDecks;
-    QSignalMapper m_vinylControlEnabledMapper;
 };
-
-#endif // VINYLCONTROLMANAGER_H
