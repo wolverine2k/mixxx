@@ -601,7 +601,8 @@ double BpmControl::calcSyncAdjustment(bool userTweakingSync) {
         adjustment = 1.0;
         // When updating the user offset, make sure to remove the existing offset or else it
         // will get double-applied.
-        m_dUserOffset.setValue(error + curUserOffset);
+        double offset = std::fmod(error + curUserOffset, 1.0f);
+        m_dUserOffset.setValue(offset);
     } else {
         // Threshold above which we do sync adjustment.
         const double kErrorThreshold = 0.01;
@@ -1191,6 +1192,7 @@ void BpmControl::trackBeatsUpdated(mixxx::BeatsPointer pBeats) {
 }
 
 void BpmControl::trackBpmLockChanged(bool locked) {
+    // This is called by EngineBuffer after receiving Track::bpmLockChanged() signal
     m_pBpmLock->setAndConfirm(locked);
     if (locked) {
         m_pBeatsUndoPossible->forceSet(0);
@@ -1254,7 +1256,8 @@ void BpmControl::slotToggleBpmLock(double v) {
     }
     bool locked = pTrack->isBpmLocked();
     pTrack->setBpmLocked(!locked);
-    // The pushbutton is updated in trackBpmLockChanged() via bpmLockChanged() signal.
+    // Track emits bpmLockChanged() signal, and EngineBuffer updates the pushbutton
+    // by calling trackBpmLockChanged()
 }
 
 mixxx::Bpm BpmControl::updateLocalBpm() {
